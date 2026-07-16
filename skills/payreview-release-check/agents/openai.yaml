@@ -1,0 +1,4 @@
+interface:
+  display_name: "PayReview Release Check"
+  short_description: "Run the PayReview release-readiness checklist."
+  default_prompt: "Run the PayReview release readiness check for the current version."

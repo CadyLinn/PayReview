@@ -1,0 +1,319 @@
+# PayReview Repository Agent Rules
+
+This file defines the mandatory rules for AI agents and contributors working in this repository. Its name is `AGENTS.md` so compatible coding agents can discover it automatically.
+
+## 1. Instruction priority
+
+Use the following sources in order:
+
+1. The user's current explicit request.
+2. This `AGENTS.md` file.
+3. [PRODUCT_PLAN_V0.2.md](PRODUCT_PLAN_V0.2.md) for product behavior, scope, copy, and brand direction.
+4. [PRODUCT_LAUNCH_PLAN_V0.2.md](PRODUCT_LAUNCH_PLAN_V0.2.md) for onboarding, subscriptions, analytics, App Store preparation, and release operations.
+5. [TECH_STACK.md](TECH_STACK.md) for technical direction after unresolved architecture decisions have been approved.
+6. Feature specifications and tests.
+
+Do not silently resolve a conflict between these sources. Report the conflict, identify the affected files, and request a product or architecture decision before implementing behavior that depends on it.
+
+## 2. Product mission
+
+Build PayReview as a pre-spend personal finance decision product, not merely a bookkeeping app.
+
+The product must help the user understand before payment:
+
+1. What changes if this purchase happens now.
+2. Whether similar confirmed purchases have happened frequently.
+3. What recovery action can preserve the budget or goal.
+
+Use the product promise:
+
+> 花錢前，先算價格與影響。
+
+Never shame the user, celebrate spending, block a purchase, or present the product as making the final decision for them.
+
+## 3. Language and repository standards
+
+- Write all source-code comments in English.
+- Do not use emoji in source code, comments, identifiers, commit messages, release notes, or project documentation.
+- Write user-facing Traditional Chinese copy in a calm, concise, and non-judgmental tone.
+- Use consistent product terms from the product plan. Do not invent synonyms for financial states without updating the specification.
+- Use Markdown for product and engineering documentation.
+- Keep files focused. Link to the source document instead of duplicating long product specifications.
+- Do not commit `.DS_Store`, secrets, generated credentials, local build output, or personal test data.
+- Never log authentication tokens, exact financial content, private notes, merchant names, or personally identifiable information.
+
+## 4. Product experience rules
+
+### Today
+
+- Make Today a financial navigation page, not a chart-heavy dashboard.
+- Show safe-to-spend guidance, the next planned expense, one clear evaluation action, one goal state, and one useful observation.
+- Keep `評估一筆消費` as the single dominant action. Do not hide it in a generic plus button or overflow menu.
+
+### Evaluate
+
+- Ask for the amount first. Keep category optional for quick evaluation.
+- Show a clear conclusion before detailed cards.
+- Answer budget, frequency, and goal impact when data is available.
+- State that data is insufficient when a reliable result cannot be calculated.
+- Offer `購買並記錄`, `晚點決定`, `略過`, and `調整計畫` after evaluation.
+
+### Plan
+
+- Treat income cycle, planned expenses, flexible budget, safety buffer, goals, and non-negotiable items as calculation assumptions.
+- Show assumptions and allow the user to review or update them.
+
+### Records
+
+- Store confirmed transactions separately from evaluated scenarios.
+- Support income, expense, transfer, category, date, note, and tags.
+- Do not count a transfer as income or expense.
+- When a transaction fulfills a planned expense occurrence, complete that occurrence and prevent duplicate deduction.
+
+## 5. Financial calculation rules
+
+- Implement all monetary and date calculations in a deterministic, testable `FinanceEngine` module.
+- Keep `FinanceEngine` independent of SwiftUI, authentication, analytics, and cloud persistence.
+- Use `Decimal` for currency. Never use `Double` or `Float` for money.
+- Use `Calendar` with an explicit time zone for financial periods and target dates.
+- Reserve essential and expected expenses before calculating flexible spending.
+- Reserve the minimum contribution for protected goals before calculating safe-to-spend guidance.
+- Present safe-to-spend as an estimate or range when inputs are uncertain. Never present it as a guarantee.
+- Preserve calculation inputs, assumptions, data freshness, evaluation time, time zone, and rule version in `DecisionSnapshot`.
+- Let AI explain calculated results only. Never let generated text invent, change, round independently, or override a financial result.
+
+### Decision status
+
+Use the following internal states unless the product specification is formally changed:
+
+- `classified_spendable_before`: the lower of the remaining flexible allocation and the conservative safe-to-spend bound after maximum planned expenses and protected goal contributions.
+- `within_flexible`: the purchase fits `classified_spendable_before`.
+- `uses_buffer`: the purchase exceeds `classified_spendable_before` but fits a separate buffer explicitly approved for this scenario and not counted in any other available amount.
+- `requires_plan_change`: the purchase requires an explicit change to future discretionary spending, a contribution, or a goal date.
+- `insufficient_data`: required inputs are unavailable or too stale for a reliable result.
+
+Do not automatically label a purchase as impulsive because it exceeds the flexible budget. Use `規劃外` or `超出預算` in user-facing copy unless the user explicitly classifies their intent.
+
+### Goal impact
+
+- Keep the goal date unchanged when `classified_spendable_before` covers the purchase.
+- Show a recovery amount when future discretionary spending can preserve the goal.
+- Calculate use of goal funds only after the user actively selects that scenario.
+- Show a delayed goal date only when the user uses protected goal funds or the minimum savings pace can no longer reach the target date.
+- Never mutate a goal contribution or target date without explicit confirmation.
+
+### Spending frequency
+
+- Count only confirmed expense transactions in the configured category and time window.
+- Exclude transfers, evaluations, deferred purchases, skipped decisions, reversed transactions, and deleted transactions.
+- Show `資料不足，尚未計算頻率。` when the category or history is insufficient.
+- Do not hard-code a rolling window until the product owner confirms whether to use 30 days, the income cycle, or a user-configurable period.
+
+## 6. Scenario and transaction integrity
+
+- Keep `SpendScenario` temporary and local until the user confirms an action.
+- Never change the real budget, goal balance, or transaction history during evaluation.
+- Create a `Transaction` only after `購買並記錄` confirmation.
+- Save a deferred or skipped decision only after the user chooses to preserve it.
+- Make confirmation operations idempotent so repeated taps or retries cannot create duplicate transactions.
+- Treat confirmed transactions as the source of truth for actual spending history.
+
+## 7. iOS architecture rules
+
+- Build the UI with SwiftUI and support the minimum iOS version approved by the team.
+- Keep views declarative and free of financial calculations and direct database access.
+- Use a feature state or view model layer for presentation behavior.
+- Use repository protocols between features and persistence implementations.
+- Isolate authentication, subscriptions, notifications, analytics, and storage behind service protocols.
+- Use Swift Concurrency for asynchronous work and maintain actor isolation for mutable shared state.
+- Respect the system Reduce Motion setting for launch, onboarding, Decision Card, and transaction animations.
+- Support Dynamic Type, VoiceOver labels, sufficient contrast, and localized currency and dates.
+- Do not add a third-party dependency when the platform API is sufficient.
+- Document why a dependency is needed before adding it.
+
+Recommended boundaries:
+
+```text
+App
+Features
+  Onboarding
+  Today
+  Evaluate
+  Plan
+  Records
+  Settings
+Core
+  FinanceEngine
+  Domain
+  DesignSystem
+Data
+  Repositories
+  Firebase
+Services
+  Authentication
+  Subscription
+  Analytics
+Tests
+```
+
+## 8. Persistence and synchronization rules
+
+- Use Cloud Firestore as the only authoritative financial-data store for MVP.
+- Require Firebase Authentication before onboarding or core features.
+- Support Sign in with Apple and Google Sign-In; do not provide guest or anonymous mode.
+- Configure and test Firestore persistent disk cache. Apple platforms enable offline persistence by default, but do not rely on an unverified default.
+- Require network access for first sign-in and data that has not been cached.
+- Distinguish cached snapshots, pending writes, and server-confirmed state in the repository and UI.
+- Keep unconfirmed `SpendScenario` state local and out of Firestore.
+- Write a decision or transaction only after explicit user confirmation.
+- Scope every Firestore read and write to the authenticated `uid`.
+- Use repository protocols so views never call Firebase SDKs directly.
+- Do not implement CloudKit or a second financial synchronization source.
+- Allow offline optimistic writes only as pending UI state. On reconnect, Security Rules must evaluate the live server-owned account state; rejected writes must roll back optimistic state and show a recoverable error.
+- For ordinary account switching, require network access and successful `waitForPendingWrites` with a 30-second maximum and user cancellation; on timeout, cancellation, terminal error, or remaining writes, cancel the switch and keep the current account active. Never silently discard confirmed financial actions to complete a switch.
+- Define retry, conflict, deletion propagation, pending-write, and reconnect behavior.
+- Make writes idempotent so offline retries cannot create duplicate transactions or deductions.
+- Require a server-owned `active` account state before any user data write; missing, unreadable, `deleting`, or `deleted` state must fail closed. Bootstrap state only from the authenticated token `uid`, never a caller-supplied ID, and never overwrite or reactivate `deleting` or `deleted`.
+- Clear user-scoped Firestore cache and sensitive local state after account deletion and before a different user can use the same installation.
+
+## 9. Authentication, privacy, and permissions
+
+- Require the user to sign in with Apple or Google before onboarding and core features.
+- Offer Sign in with Apple whenever Google Sign-In is offered on iOS.
+- Do not implement anonymous authentication or guest mode.
+- Do not implement or request notification permission in MVP. Local notifications are P1.
+- Do not request financial account, photo, contact, location, camera, or marketing permission during sign-in.
+- Explain a permission immediately before showing the system prompt.
+- Request photo access only when the user actively chooses a future screenshot-import feature.
+- Keep core MVP evaluation usable without bank or payment-account connections.
+- Provide privacy policy, terms, support, data export, and account deletion in Settings.
+- If accounts can be created, let users initiate deletion of the complete account and associated data from inside the App.
+- Require recent authentication before destructive account deletion. For Sign in with Apple, obtain a fresh authorization code and revoke the Apple authorization before deleting Firebase Authentication. Stop new writes and attempt to flush pending writes for at most 30 seconds with user cancellation and immediate terminal-error handling; if some cannot sync, require a separate confirmation that deletion will permanently discard those listed local-only changes. Establish a server-owned deletion tombstone that Security Rules enforce, enqueue a durable deletion job, delete Firestore documents and cloud files idempotently, delete Firebase Authentication only after cloud cleanup, clear cached and local sensitive data after the server accepts the job, and leave the client signed out while the backend completes or retries independently.
+- Do not use an email-only or generic form-only flow as account deletion.
+- Tell subscribed users that deleting an account does not automatically cancel an Apple-managed subscription, and provide subscription management access.
+- Keep App, website, App Store metadata, privacy labels, policies, and FAQ consistent in the same release.
+
+## 10. Subscription rules
+
+Use StoreKit 2 as the source of App Store entitlement state.
+
+Current proposed plans:
+
+| Plan | Price | Trial |
+| --- | ---: | --- |
+| Annual | NT$800 per year | Seven days for eligible users |
+| Monthly | NT$120 per month | No trial by default |
+
+- Treat these as proposed configuration until the product owner confirms the paid feature boundary.
+- Display the localized StoreKit price rather than hard-coding display prices in production UI.
+- Before purchase, show the product value, billing period, trial eligibility, conversion price, renewal behavior, and cancellation path.
+- Support purchase restoration and entitlement refresh.
+- Do not unlock access from a local purchase-success flag alone.
+- Do not claim that every user is eligible for a free trial.
+
+## 11. Analytics and diagnostics
+
+Define every event by the product question it answers. Do not add events merely because a screen or button exists.
+
+Use this Activation definition unless formally changed:
+
+> The user completes initial financial setup and views the first Decision Card.
+
+Approved event families include:
+
+- Acquisition: concept-page and waitlist conversion.
+- Activation: onboarding completion and first Decision Card.
+- Retention: sessions, repeated evaluations, and plan maintenance.
+- Revenue: paywall, trial, subscription, restoration, and entitlement state.
+- Referral: voluntary sharing, recommendation intent, and rating prompts.
+
+- Do not send exact financial amounts to analytics.
+- Do not send merchant names, goal names, notes, custom tag text, email addresses, or full snapshots.
+- Use reviewed ranges, enums, and booleans instead of raw financial values.
+- Choose one primary product analytics SDK and one primary crash-reporting SDK for MVP.
+- Scrub financial and authentication data from errors, breadcrumbs, and logs.
+- Update privacy disclosures before shipping a new SDK or event payload.
+
+## 12. Testing requirements
+
+Add or update tests whenever changing money, dates, goals, allocation, persistence, or transaction confirmation.
+
+FinanceEngine tests must cover:
+
+- Zero, negative, fractional, and very large amounts.
+- Exact flexible-budget boundary and the smallest supported unit above it.
+- Planned-expense minimum and maximum ranges.
+- `within_flexible`, `uses_buffer`, `requires_plan_change`, and `insufficient_data`.
+- Goal unchanged, feasible recovery, explicit goal-fund use, and actual delay.
+- Month end, year end, leap day, time-zone change, and next-income-date boundaries.
+- Insufficient and sufficient frequency history.
+- Planned-expense matching without double deduction.
+- Repeated confirmation without duplicate transaction creation.
+
+Feature and integration tests must cover:
+
+- Apple and Google sign-in followed by authenticated onboarding and the first Decision Card.
+- Rejection of unauthenticated access to onboarding and core financial features.
+- Sign-out and reauthentication with the same `uid`, including cached data and pending-write recovery.
+- Switching to a different account without exposing the previous user's cached or local financial data.
+- Account switching that waits for acknowledged pending writes, cancels safely on failure, and never silently discards confirmed financial actions.
+- Offline evaluation and recovery after reconnecting.
+- Purchase, defer, skip, and adjust-plan flows.
+- Data export and account deletion entry points.
+- Sign in with Apple reauthentication and authorization revocation, explicit confirmation before discarding unsynced data, deletion-tombstone enforcement against stale tokens and offline retries, durable backend-job continuation after client sign-out, recursive cloud-data deletion, Firebase Authentication deletion, local-cache clearing, partial-failure recovery, and idempotent retry.
+- Network loss before and after tombstone creation, rejected optimistic-write rollback, cache-clear failure blocking a new account session, and attempted recreation of a deleted account state.
+- Pending-write success, terminal error, user cancellation, and 30-second timeout branches for both deletion and ordinary account switching.
+- Subscription purchase, restore, expiry, and entitlement refresh.
+- Reduce Motion and critical accessibility paths.
+
+Do not weaken a product rule to make a test pass. Fix the implementation or update the approved specification first.
+
+## 13. Git and pull request rules
+
+- Create a feature branch for changes unless the user explicitly requests a direct `main` update.
+- Never merge, rebase, force-push, submit, publish, or delete a branch without explicit authorization.
+- Keep commits focused and use clear imperative commit messages.
+- Do not include unrelated local files or user changes in a commit.
+- Run `git diff --check` before committing.
+- Run relevant tests and report what was not run.
+- Use a pull request to expose product decisions, architecture conflicts, migrations, privacy changes, and release risk.
+- Require review before merging changes to financial rules, authentication, synchronization, subscriptions, privacy, analytics, or release automation.
+- Prefer Squash and merge after required approvals and blocking comments are resolved.
+
+## 14. Release rules
+
+Use [skills/payreview-release-check/SKILL.md](skills/payreview-release-check/SKILL.md) before TestFlight external testing, App Store submission, preorder activation, or production release.
+
+- Report each release item as `pass`, `block`, or `not applicable`.
+- Set the release decision to `NO-GO` when financial integrity, privacy, account deletion, security, subscription disclosure, review access, or a critical crash is blocked.
+- Provide a working review account with representative test data when full functionality requires login, or an approved full-feature demo mode.
+- Keep support, privacy policy, terms, FAQ, and account-deletion URLs live before submission.
+- Generate and review third-party notices after dependency changes.
+- Preserve required license and copyright text, including complete MIT notices.
+- Treat preorder and App Store featuring as optional launch tactics, not guaranteed ranking or exposure.
+- Require explicit product-owner approval before uploading a build, submitting for review, enabling preorder, nominating for featuring, or releasing publicly.
+- Verify current official Apple requirements at execution time because App Store rules change.
+- Document why cross-device financial continuity is a significant account-based feature under App Review Guideline 5.1.1(v). Treat submission as blocked if mandatory login cannot be justified against the current rule.
+
+## 15. Agent workflow
+
+For every implementation task:
+
+1. Read the relevant source documents and nearby code before editing.
+2. Identify whether the task depends on an unresolved product or architecture decision.
+3. State assumptions when they affect behavior, data, privacy, or scope.
+4. Make the smallest coherent change that satisfies the approved requirement.
+5. Keep calculation, UI, persistence, and analytics responsibilities separated.
+6. Add or update tests proportional to risk.
+7. Run formatting, static checks, tests, and `git diff --check` when available.
+8. Review the final diff for unrelated files, secrets, financial data, and accidental behavior changes.
+9. Report the outcome, files changed, verification performed, and any remaining decision or risk.
+
+Stop and ask for direction when a missing decision would materially change financial behavior, cloud architecture, paid access, collected data, account deletion, or release scope.
+
+## 16. Specialized skills
+
+- Use [skills/evaluate-impulse-spend/SKILL.md](skills/evaluate-impulse-spend/SKILL.md) for implementing, testing, or reviewing pre-spend evaluation and Decision Cards.
+- Use [skills/payreview-release-check/SKILL.md](skills/payreview-release-check/SKILL.md) for TestFlight and App Store release readiness.
+
+These Skills provide workflows. They do not override this file or the approved product documents.

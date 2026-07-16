@@ -1,0 +1,4 @@
+interface:
+  display_name: "PayReview Spending Evaluator"
+  short_description: "Evaluate a purchase before it changes the plan"
+  default_prompt: "Use $evaluate-impulse-spend to assess a proposed purchase and produce a neutral Decision Card."
