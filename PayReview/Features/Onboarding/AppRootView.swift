@@ -10,9 +10,7 @@ struct AppRootView: View {
                 LaunchView()
             } else if authentication.authenticatedUser == nil {
                 if hasSeenIntroduction {
-                    PayReviewSignInView(viewModel: authentication) {
-                        hasSeenIntroduction = false
-                    }
+                    PayReviewSignInView(viewModel: authentication)
                 } else {
                     OnboardingFlowView {
                         hasSeenIntroduction = true

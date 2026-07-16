@@ -3,89 +3,86 @@ import SwiftUI
 
 struct PayReviewSignInView: View {
     @ObservedObject var viewModel: AuthenticationTestViewModel
-    let reviewIntroduction: () -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Spacer()
-                Button("再次查看介紹", action: reviewIntroduction)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(PayReviewTheme.primary)
-                    .frame(minHeight: 44)
-            }
-            .padding(.horizontal, 24)
+        GeometryReader { proxy in
+            let scale = min(proxy.size.width / 393, proxy.size.height / 852)
 
-            Spacer()
+            ZStack(alignment: .topLeading) {
+                PayReviewTheme.background
 
-            VStack(spacing: 18) {
-                Image("PayReviewMascot")
+                Image("PayReviewSignInMark")
                     .resizable()
-                    .scaledToFill()
-                    .frame(width: 92, height: 92)
-                    .clipShape(Circle())
-                    .accessibilityLabel("PayReview 吉祥物")
+                    .scaledToFit()
+                    .frame(width: 78, height: 78)
+                    .position(x: 196.5, y: 131)
+                    .accessibilityLabel("PayReview")
 
                 Text("付錢前，先看影響")
-                    .font(.title.weight(.bold))
+                    .font(.system(size: 28, weight: .bold))
                     .foregroundStyle(PayReviewTheme.primaryText)
+                    .frame(width: 320)
+                    .position(x: 196.5, y: 210)
 
                 Text("輸入眼前金額，也看見這筆錢會帶來什麼改變")
-                    .font(.body)
+                    .font(.system(size: 17))
                     .foregroundStyle(PayReviewTheme.secondaryText)
                     .multilineTextAlignment(.center)
-                    .frame(maxWidth: 320)
-            }
+                    .frame(width: 320)
+                    .position(x: 196.5, y: 266)
 
-            Spacer()
-
-            VStack(spacing: 12) {
                 SignInWithAppleButton(.continue) { request in
                     viewModel.configureAppleRequest(request)
                 } onCompletion: { result in
                     Task { await viewModel.completeAppleSignIn(result) }
                 }
                 .signInWithAppleButtonStyle(.black)
-                .frame(height: 50)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .frame(width: 345, height: 48)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
                 .disabled(viewModel.isWorking)
+                .position(x: 196.5, y: 698)
 
                 Button {
                     Task { await viewModel.signInWithGoogle() }
                 } label: {
-                    Label("使用 Google 繼續", systemImage: "person.crop.circle")
-                        .font(.body.weight(.semibold))
-                        .frame(maxWidth: .infinity, minHeight: 48)
+                    Text("使用 Google 繼續")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(PayReviewTheme.primary)
+                        .frame(width: 343, height: 46)
                 }
-                .buttonStyle(.bordered)
-                .tint(PayReviewTheme.primary)
+                .background(PayReviewTheme.surface, in: RoundedRectangle(cornerRadius: 12))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color(red: 203 / 255, green: 221 / 255, blue: 211 / 255), lineWidth: 1)
+                }
                 .disabled(viewModel.isWorking)
+                .position(x: 196.5, y: 758)
 
                 Text("登入時不會要求通知或金融帳戶權限")
-                    .font(.footnote)
+                    .font(.system(size: 13))
                     .foregroundStyle(PayReviewTheme.secondaryText)
-                    .multilineTextAlignment(.center)
-            }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 40)
-        }
-        .overlay {
-            if viewModel.isWorking {
-                ZStack {
-                    Color.black.opacity(0.12).ignoresSafeArea()
-                    ProgressView("正在安全登入")
-                        .padding()
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                    .frame(width: 345)
+                    .position(x: 196.5, y: 803)
+
+                if viewModel.isWorking {
+                    ZStack {
+                        Color.black.opacity(0.12)
+                        ProgressView("正在安全登入")
+                            .padding()
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                    }
+                    .frame(width: 393, height: 852)
                 }
             }
+            .frame(width: 393, height: 852)
+            .scaleEffect(scale)
+            .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
         }
+        .ignoresSafeArea()
         .background(PayReviewTheme.background.ignoresSafeArea())
     }
 }
 
 #Preview {
-    PayReviewSignInView(
-        viewModel: AuthenticationTestViewModel(),
-        reviewIntroduction: {}
-    )
+    PayReviewSignInView(viewModel: AuthenticationTestViewModel())
 }
