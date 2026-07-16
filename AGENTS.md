@@ -147,8 +147,7 @@ Core
   DesignSystem
 Data
   Repositories
-  LocalStore
-  CloudStore
+  Firebase
 Services
   Authentication
   Subscription
@@ -159,27 +158,25 @@ Tests
 
 ## 8. Persistence and synchronization rules
 
-- Use SwiftData as the only financial-data store for MVP.
-- Keep guest and signed-in financial plans on device during MVP.
-- Do not make sign-in a dependency of local financial calculation or bookkeeping.
-- Keep unconfirmed scenarios local.
-- Do not implement cross-device financial-data synchronization during MVP.
-- Do not describe sign-in as providing backup or cross-device sync until that functionality exists.
-- Before adding synchronization, record an architecture decision that selects exactly one authoritative cloud source.
-- Ask for explicit confirmation before migrating local data into a future cloud account.
-- Do not implement simultaneous CloudKit and Firestore bidirectional synchronization.
-- Define conflict resolution, deletion propagation, retry behavior, and offline recovery before enabling cross-device sync.
-
-### Post-MVP architecture decision
-
-CloudKit and Firestore remain candidates for a future synchronization release. Neither is approved for MVP.
-
-Do not start cloud synchronization work until the team records an architecture decision covering provider choice, ownership, conflict resolution, migration, deletion, offline behavior, security, and operating cost. Update all affected documents in the same PR after that decision.
+- Use Cloud Firestore as the only authoritative financial-data store for MVP.
+- Require Firebase Authentication before onboarding or core features.
+- Support Sign in with Apple and Google Sign-In; do not provide guest or anonymous mode.
+- Configure and test Firestore persistent disk cache. Apple platforms enable offline persistence by default, but do not rely on an unverified default.
+- Require network access for first sign-in and data that has not been cached.
+- Distinguish cached snapshots, pending writes, and server-confirmed state in the repository and UI.
+- Keep unconfirmed `SpendScenario` state local and out of Firestore.
+- Write a decision or transaction only after explicit user confirmation.
+- Scope every Firestore read and write to the authenticated `uid`.
+- Use repository protocols so views never call Firebase SDKs directly.
+- Do not implement CloudKit or a second financial synchronization source.
+- Define retry, conflict, deletion propagation, pending-write, and reconnect behavior.
+- Make writes idempotent so offline retries cannot create duplicate transactions or deductions.
 
 ## 9. Authentication, privacy, and permissions
 
-- Keep `先試用看看` available unless the product owner explicitly changes the requirement.
-- Offer Sign in with Apple when third-party sign-in such as Google is offered on iOS.
+- Require the user to sign in with Apple or Google before onboarding and core features.
+- Offer Sign in with Apple whenever Google Sign-In is offered on iOS.
+- Do not implement anonymous authentication or guest mode.
 - Do not request notification, financial account, photo, contact, location, camera, or marketing permission during sign-in.
 - Explain a permission immediately before showing the system prompt.
 - Request notification permission only after the user enables a reminder.

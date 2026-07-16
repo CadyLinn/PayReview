@@ -2,37 +2,40 @@
 
 ## 技術目標
 
-PayReview MVP 是 iOS-first 的本機優先個人財務決策 App。技術架構必須確保：
+PayReview MVP 採 SwiftUI + Firebase，並維持本機可完成消費前評估。
+
+技術架構必須確保：
 
 1. 消費前評估快速、可離線、可測試。
-2. 試算不會在確認前修改正式財務資料。
-3. 不連結銀行、支付帳戶或雲端同步也能完整使用核心功能。
-4. 未來能在不改寫財務規則的前提下加入帳號或單一雲端同步來源。
+2. 登入使用者可安全同步財務計畫、交易與決策紀錄。
+3. 使用者必須以 Apple 或 Google 帳號登入後才能使用核心功能。
+4. 試算在確認前不修改正式財務資料。
+5. 不連結銀行或支付帳戶也能完整使用 MVP。
 
 ## MVP 技術結論
 
-| 層級 | MVP 選擇 | 用途 |
+| 層級 | 選擇 | 用途 |
 | --- | --- | --- |
 | App | Swift、SwiftUI | iOS 原生介面、導航與動畫 |
-| 財務計算 | 獨立 Swift `FinanceEngine` 模組 | 預算、目標、頻率、日期與恢復方案 |
-| 本機資料 | SwiftData | 財務計畫、交易、分類與決策紀錄 |
-| 跨裝置同步 | 不納入 MVP | 完成架構決策後再選擇單一雲端來源 |
-| 帳號 | Sign in with Apple、Google OAuth | 帳號功能；不得宣稱提供尚未實作的財務同步 |
+| 財務計算 | 獨立 Swift `FinanceEngine` | 預算、目標、頻率、日期與恢復方案 |
+| 資料庫 | Cloud Firestore | 正式財務資料、持久化快取與跨裝置同步 |
+| 帳號 | Firebase Authentication | Sign in with Apple、Google 登入與帳號生命週期 |
+| 後端工作 | Firebase Cloud Functions | 帳號刪除與其他不可信任客戶端的操作 |
 | 內購訂閱 | StoreKit 2 | 年費、月費、試用、權益與恢復購買 |
+| 分析 | Firebase Analytics | 經隱私審查的 AARRR 事件 |
+| 錯誤監控 | Firebase Crashlytics | 當機與非致命錯誤診斷 |
 | 通知 | UserNotifications | 使用者啟用提醒後的本機通知 |
 | 開源聲明 | LicensePlist | 產生第三方授權資訊 |
-| 分析與錯誤 | 待隱私評估後各選一套 | 產品漏斗與當機診斷 |
 
-MVP 建議支援 iOS 17 以上，以使用現代 SwiftUI、Swift Concurrency 與 SwiftData。正式最低版本仍須由團隊確認。
+MVP 建議支援 iOS 17 以上，以使用現代 SwiftUI 與 Swift Concurrency。正式最低版本仍須由團隊確認。
 
 ## 明確不納入 MVP
 
 - 商店方案、折扣、優惠券、單價或任何比價功能。
-- CloudKit、Firestore 或其他 App 層級跨裝置財務資料同步。
+- CloudKit 或 Firebase 以外的第二套財務同步來源。
 - 銀行、信用卡或支付帳戶串接。
 - Share Extension、截圖 OCR 與自動擷取價格。
 - 網路爬蟲與商城功能。
-- 自建 API 與自管伺服器。
 - AI 決定或修改財務計算結果。
 
 比價功能目前不列入承諾中的後續版本。若未來重新提出，必須另寫產品規格、資料模型、隱私評估與測試計畫。
@@ -49,15 +52,15 @@ MVP 建議支援 iOS 17 以上，以使用現代 SwiftUI、Swift Concurrency 與
 
 規則：
 
-- View 不直接計算財務結果或操作 SwiftData。
+- View 不直接計算財務結果或直接呼叫 Firebase SDK。
 - View 透過 feature state 或 ViewModel 使用 Repository protocol。
-- Repository 隔離 SwiftData 實作，保留未來替換或增加同步層的可能性。
+- Repository 使用 Firestore data source，並封裝離線與同步狀態。
 - 動畫必須尊重 Reduce Motion。
 - 關鍵流程支援 Dynamic Type、VoiceOver 與本地化金額／日期。
 
 ## FinanceEngine
 
-建立不依賴 SwiftUI、SwiftData、登入、分析或網路服務的 Swift 模組。
+建立不依賴 SwiftUI、Firebase、登入或分析服務的 Swift 模組。
 
 職責：
 
@@ -73,41 +76,69 @@ MVP 建議支援 iOS 17 以上，以使用現代 SwiftUI、Swift Concurrency 與
 - AI 只能改寫已計算結果，不得產生或覆寫數字。
 - 所有程式碼註解使用英文，不使用 emoji。
 
-## SwiftData
+## 資料來源
 
-MVP 的正式財務資料只儲存在 SwiftData：
+Cloud Firestore 是正式財務資料的唯一同步來源。Apple 平台預設啟用離線持久化；仍須明確確認 persistent disk cache 設定並測試。已成功登入且載入過的資料可在沒有網路時讀寫，並於恢復連線後同步。
 
-| 資料 | MVP 儲存方式 |
-| --- | --- |
-| 財務計畫與目標 | SwiftData |
-| 預期支出與彈性預算 | SwiftData |
-| 正式交易、分類與標籤 | SwiftData |
-| 延後或略過的決策 | SwiftData，由使用者選擇保存 |
-| 尚未確認的 `SpendScenario` | 記憶體或暫存，不寫入正式交易 |
-| `DecisionSnapshot` | 確認保存或交易後寫入 SwiftData |
+首次登入、首次載入尚未快取的資料，以及部分需要伺服器確認的操作仍需要網路。介面必須區分快取資料、pending writes 與已由伺服器確認的資料，不能把離線結果表示為最新雲端狀態。
 
-資料完整性規則：
+尚未確認的 `SpendScenario` 保持本機暫存，不寫入 Firestore。只有使用者選擇保存決策或「購買並記錄」後，才寫入正式資料。
 
-- `SpendScenario` 不得改變正式預算。
-- 建立交易與完成對應預期支出必須是單一一致操作。
-- 重複點擊或重試不得建立重複交易。
-- 轉帳不計入收入或支出。
-- 刪除、匯出與資料模型 migration 必須有測試。
+建議資料路徑：
 
-## 帳號與同步界線
+```text
+users/{uid}/profile/main
+users/{uid}/financialPlans/{planId}
+users/{uid}/incomeCycles/{incomeCycleId}
+users/{uid}/goals/{goalId}
+users/{uid}/plannedExpenses/{expenseId}
+users/{uid}/flexibleBudgets/{budgetId}
+users/{uid}/transactions/{transactionId}
+users/{uid}/transfers/{transferId}
+users/{uid}/categories/{categoryId}
+users/{uid}/tags/{tagId}
+users/{uid}/decisionSnapshots/{snapshotId}
+users/{uid}/deferredPurchases/{purchaseId}
+```
 
-登入不是核心功能的前提。MVP 財務資料即使登入後仍保留在 SwiftData，不得在 UI 或 App Store 文案中宣稱帳號會提供財務資料備份或跨裝置同步。
+## Firebase Authentication
 
-未來加入同步前，必須提交 Architecture Decision Record，至少決定：
+支援：
 
-1. 唯一雲端資料來源是 CloudKit、Firestore 或其他方案。
-2. 本機與雲端的資料所有權。
-3. 衝突解決與離線重試。
-4. 刪除傳播與帳號生命週期。
-5. 本機資料遷移與回復策略。
-6. 權限、安全、隱私與營運成本。
+- Sign in with Apple。
+- Google Sign-In。
 
-禁止同時使用 CloudKit 與 Firestore 雙向同步同一份財務資料。
+使用者必須使用 Apple 或 Google 帳號登入後才能進入首次設定與核心功能。不使用 Firebase Anonymous Authentication，也不提供訪客模式。
+
+首次登入需要網路。若裝置已有有效登入狀態，且 Firestore 有可用快取，才允許在離線狀態進入可用的核心畫面。
+
+帳號刪除必須從 App 內開始，並刪除 Firebase Authentication 身分、Firestore 文件及使用者相關雲端檔案。不可只提供客服 Email 或一般表單。
+
+## Firestore 安全與一致性
+
+- Security Rules 必須限制使用者只能讀寫自己的 `uid` 路徑。
+- 不得使用公開讀寫規則。
+- 不得將 service account、私鑰或其他伺服器端機密提交到 Git。
+- 交易建立與預期支出完成需要具備 idempotency，避免重複點擊或離線重試造成重複扣款。
+- 為重要文件保留 schema version、createdAt、updatedAt 與必要的 rule version。
+- 明確處理 server timestamp 尚未解析、離線 pending write 與刪除同步狀態。
+- 使用 Firebase Emulator 測試跨使用者隔離、拒絕未授權寫入與資料驗證。
+
+## Cloud Functions
+
+只用於必須信任伺服器端的工作：
+
+- 協調完整帳號刪除。
+- 未來需要驗證的 Webhook 或伺服器端匯出。
+
+不要把 FinanceEngine 移到 Cloud Functions。消費前評估必須能在手機端離線完成。
+
+## CloudKit 與 iCloud
+
+- 不使用 CloudKit 同步 PayReview 財務資料。
+- 不建立 CloudKit 與 Firestore 雙向同步。
+- iCloud Backup 可依使用者系統設定備份本機 App 資料，但不是 PayReview 的跨裝置同步來源。
+- 正式跨裝置同步只以 Firebase Authentication + Cloud Firestore 提供。
 
 ## 訂閱
 
@@ -120,7 +151,7 @@ MVP 的正式財務資料只儲存在 SwiftData：
 
 實作要求：
 
-- 以 StoreKit 回傳的在地化價格顯示，不在正式 UI 寫死價格字串。
+- 以 StoreKit 回傳的在地化價格顯示。
 - 顯示週期、試用資格、試用轉付費、續訂與取消方式。
 - 支援 Restore Purchases 與 entitlement 更新。
 - 在付費功能邊界確認前，不啟用正式付費牆。
@@ -132,29 +163,22 @@ MVP 的正式財務資料只儲存在 SwiftData：
 | 通知 | 使用者啟用提醒後才請求 |
 | 相簿、相機、位置、聯絡人 | 不請求 |
 | 銀行、信用卡、LINE、支付訊息 | 不讀取、不請求 |
-| 財務計畫與交易 | 儲存在 SwiftData，供決策、匯出與使用者選擇的功能使用 |
+| 財務資料 | Firestore 儲存與同步 |
+| 尚未確認的消費試算 | 記憶體或短期本機暫存，不寫入正式資料 |
 
-若 App 支援建立帳號，設定頁必須能發起完整帳號刪除。導向網頁時，該頁必須是已驗證身分的實際刪除流程，不能只提供 Email 或一般表單。
+在 App、官網、App Store 隱私標示與隱私權政策中，清楚說明 Firebase Authentication、Firestore、Analytics、Crashlytics 與 Cloud Functions 的資料用途。
 
-## 分析與錯誤監控
+## Analytics 與 Crashlytics
 
-先定義產品問題，再各選一個主要工具：
+使用 Firebase Analytics 追蹤經核准的 AARRR 事件，使用 Crashlytics 診斷當機與非致命錯誤。
 
-- 產品分析：TelemetryDeck 或 Firebase Analytics。
-- 錯誤監控：Sentry 或 Crashlytics。
+不得傳送：
 
-導入前必須完成 SDK 資料盤點與隱私標示。不得傳送精確財務金額、商店名稱、目標名稱、備註、標籤、自訂文字、Token 或個人資料。
+- 精確收入、預算、支出或目標金額。
+- 商店名稱、目標名稱、備註、標籤或其他自由文字。
+- Email、姓名、Token、完整 `DecisionSnapshot` 或其他可識別資料。
 
-## 開發工具
-
-| 類別 | 選擇 |
-| --- | --- |
-| IDE | Xcode |
-| 套件管理 | Swift Package Manager |
-| 單元測試 | Swift Testing 或 XCTest |
-| UI 測試 | XCUITest |
-| CI | Xcode Cloud 或 GitHub Actions，MVP 只選一套 |
-| App Store | App Store Connect 與經人工批准的 ASC CLI 流程 |
+需要分析金額影響時，只傳送經隱私審查的區間。Crashlytics log 與 custom key 也必須遵守相同限制。
 
 ## 建議專案結構
 
@@ -174,7 +198,7 @@ PayReview/
     DesignSystem/
   Data/
     Repositories/
-    LocalStore/
+    Firebase/
   Services/
     Authentication/
     Subscription/
@@ -183,15 +207,18 @@ PayReview/
   Tests/
     FinanceEngineTests/
     FeatureTests/
+    FirestoreRulesTests/
 ```
 
 ## 進入開發前清單
 
-1. 確認最低 iOS 版本與專案模組邊界。
-2. 建立 SwiftUI App、SwiftData schema 與 migration 測試策略。
-3. 建立獨立 `FinanceEngine` 及金額、日期、目標、頻率與重複扣款測試。
-4. 確認 MVP 是否必須登入；若需要，選定 authentication provider 並完成帳號刪除設計。
-5. 確認免費與訂閱功能邊界，再建立 App Store Connect 商品。
-6. 選定一套產品分析與一套錯誤監控工具，完成隱私盤點。
-7. 完成隱私政策、使用條款、客服、資料匯出與帳號刪除流程。
-8. 每次 TestFlight 或上架前執行 `skills/payreview-release-check/SKILL.md`。
+1. 建立 SwiftUI App 與 Firebase iOS App。
+2. 在 Firebase Authentication 啟用 Apple 與 Google 登入。
+3. 建立 Firestore schema 與 repository data source。
+4. 撰寫 Firestore Security Rules，並用 Firebase Emulator 測試使用者隔離。
+5. 建立 Firestore 離線、重連、pending write 與去重複測試。
+6. 建立獨立 `FinanceEngine` 及金額、日期、目標、頻率與重複扣款測試。
+7. 確認免費與訂閱功能邊界，再建立 App Store Connect 商品。
+8. 完成 Firebase SDK 隱私盤點、App Store 隱私標示與政策說明。
+9. 完成資料匯出、帳號刪除、客服、隱私政策與使用條款。
+10. 每次 TestFlight 或上架前執行 `skills/payreview-release-check/SKILL.md`。

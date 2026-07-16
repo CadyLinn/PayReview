@@ -34,12 +34,12 @@ If an input is missing, mark it `block` or `not applicable`. Do not infer a date
 ### 2. Privacy, account, and permissions
 
 - Verify the privacy policy, terms, and in-app privacy explanation match the website and App Store listing.
-- Verify Sign in with Apple and Google Sign-In work through the approved authentication provider.
-- Verify guest-mode and signed-in financial data remain usable through the SwiftData MVP store.
+- Verify Sign in with Apple and Google Sign-In work through Firebase Authentication.
+- Verify unauthenticated users cannot enter onboarding or core financial features.
+- Verify authenticated financial data reads and writes through Cloud Firestore.
 - Verify data export is reachable in the app.
 - Verify account deletion starts in the app and completes through a secure authenticated flow; do not accept an email-only or contact-form-only process.
-- Confirm the release does not claim cloud backup or cross-device financial-data synchronization.
-- If a later release enables cloud synchronization, verify user isolation and access-control rules for the approved provider.
+- Confirm Firestore Security Rules isolate all financial data by authenticated user ID.
 - Confirm notification permission is requested only after the user enables a reminder and sees a purpose explanation.
 - Confirm no unsupported access to banking, payment, LINE, contacts, location, camera, or photos is requested.
 
@@ -71,9 +71,9 @@ If an input is missing, mark it `block` or `not applicable`. Do not infer a date
 ### 6. Quality and observability
 
 - Run automated tests for FinanceEngine money rounding, dates, budget allocation, goal timing, and duplicate deduction.
-- Test offline evaluation and SwiftData persistence across app relaunch.
-- Check the approved analytics provider and ensure no raw financial or free-text personal data is sent.
-- Check the approved crash-reporting provider for release-blocking crashes or non-fatal errors.
+- Test Firestore offline persistence and synchronization after reconnecting.
+- Check Firebase Analytics and ensure no raw financial or free-text personal data is sent.
+- Check Crashlytics for release-blocking crashes or non-fatal errors.
 - Verify all source-code comments and project documentation are in English where code standards require it, and contain no emoji.
 
 ### 7. Submission and release actions
