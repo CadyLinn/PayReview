@@ -31,11 +31,12 @@ Do not require a category for quick evaluation. If required financial data is mi
 2. Reserve essential planned expenses and protected goal contributions.
 3. Calculate flexible budget before and after the proposed purchase.
 4. Calculate a conservative safe-to-spend range from uncertain planned amounts.
-5. Classify the result as `within_flexible`, `uses_buffer`, or `requires_plan_change`.
-6. Calculate category frequency only from confirmed transactions. State when history is insufficient.
-7. Evaluate the three scenarios: pay from flexible budget, protect the goal date, and optionally use goal funds.
-8. Produce practical recovery options without changing the plan automatically.
-9. Preserve all inputs, assumptions, data freshness, and the calculation-rule version in a `DecisionSnapshot`.
+5. Cap the classifiable spendable amount at the lower of remaining flexible allocation and the conservative safe-to-spend bound.
+6. Return `insufficient_data` when required inputs are missing, stale, or inconsistent; otherwise classify the result as `within_flexible`, `uses_buffer`, or `requires_plan_change`.
+7. Calculate category frequency only from confirmed transactions. State when history is insufficient.
+8. Evaluate the three scenarios: pay from flexible budget, protect the goal date, and optionally use goal funds.
+9. Produce practical recovery options without changing the plan automatically.
+10. Preserve all inputs, assumptions, data freshness, and the calculation-rule version in a `DecisionSnapshot`.
 
 ## Write the Decision Card
 
@@ -73,6 +74,7 @@ Test at minimum:
 - Exact flexible-budget boundary and one currency unit above it.
 - Zero, negative, very large, and fractional input behavior.
 - Minimum and maximum planned-expense ranges.
+- A flexible allocation above the conservative safe-to-spend bound without an affordability overstatement.
 - Goal unchanged, feasible recovery, explicit goal-fund use, and unavoidable delay.
 - Insufficient history and multiple confirmed transactions in the frequency window.
 - Month end, leap day, daylight-saving change, and next-income-date boundary.

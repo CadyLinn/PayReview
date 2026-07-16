@@ -86,8 +86,9 @@ Never shame the user, celebrate spending, block a purchase, or present the produ
 
 Use the following internal states unless the product specification is formally changed:
 
-- `within_flexible`: the purchase fits the remaining flexible allocation.
-- `uses_buffer`: the purchase exceeds flexible allocation but fits a buffer explicitly approved for this scenario.
+- `classified_spendable_before`: the lower of the remaining flexible allocation and the conservative safe-to-spend bound after maximum planned expenses and protected goal contributions.
+- `within_flexible`: the purchase fits `classified_spendable_before`.
+- `uses_buffer`: the purchase exceeds `classified_spendable_before` but fits a separate buffer explicitly approved for this scenario and not counted in any other available amount.
 - `requires_plan_change`: the purchase requires an explicit change to future discretionary spending, a contribution, or a goal date.
 - `insufficient_data`: required inputs are unavailable or too stale for a reliable result.
 
@@ -95,7 +96,7 @@ Do not automatically label a purchase as impulsive because it exceeds the flexib
 
 ### Goal impact
 
-- Keep the goal date unchanged when flexible funds cover the purchase.
+- Keep the goal date unchanged when `classified_spendable_before` covers the purchase.
 - Show a recovery amount when future discretionary spending can preserve the goal.
 - Calculate use of goal funds only after the user actively selects that scenario.
 - Show a delayed goal date only when the user uses protected goal funds or the minimum savings pace can no longer reach the target date.
@@ -151,7 +152,6 @@ Data
 Services
   Authentication
   Subscription
-  Notifications
   Analytics
 Tests
 ```
@@ -169,21 +169,26 @@ Tests
 - Scope every Firestore read and write to the authenticated `uid`.
 - Use repository protocols so views never call Firebase SDKs directly.
 - Do not implement CloudKit or a second financial synchronization source.
+- Allow offline optimistic writes only as pending UI state. On reconnect, Security Rules must evaluate the live server-owned account state; rejected writes must roll back optimistic state and show a recoverable error.
+- For ordinary account switching, require network access and successful `waitForPendingWrites` with a 30-second maximum and user cancellation; on timeout, cancellation, terminal error, or remaining writes, cancel the switch and keep the current account active. Never silently discard confirmed financial actions to complete a switch.
 - Define retry, conflict, deletion propagation, pending-write, and reconnect behavior.
 - Make writes idempotent so offline retries cannot create duplicate transactions or deductions.
+- Require a server-owned `active` account state before any user data write; missing, unreadable, `deleting`, or `deleted` state must fail closed. Bootstrap state only from the authenticated token `uid`, never a caller-supplied ID, and never overwrite or reactivate `deleting` or `deleted`.
+- Clear user-scoped Firestore cache and sensitive local state after account deletion and before a different user can use the same installation.
 
 ## 9. Authentication, privacy, and permissions
 
 - Require the user to sign in with Apple or Google before onboarding and core features.
 - Offer Sign in with Apple whenever Google Sign-In is offered on iOS.
 - Do not implement anonymous authentication or guest mode.
-- Do not request notification, financial account, photo, contact, location, camera, or marketing permission during sign-in.
+- Do not implement or request notification permission in MVP. Local notifications are P1.
+- Do not request financial account, photo, contact, location, camera, or marketing permission during sign-in.
 - Explain a permission immediately before showing the system prompt.
-- Request notification permission only after the user enables a reminder.
 - Request photo access only when the user actively chooses a future screenshot-import feature.
 - Keep core MVP evaluation usable without bank or payment-account connections.
 - Provide privacy policy, terms, support, data export, and account deletion in Settings.
 - If accounts can be created, let users initiate deletion of the complete account and associated data from inside the App.
+- Require recent authentication before destructive account deletion. For Sign in with Apple, obtain a fresh authorization code and revoke the Apple authorization before deleting Firebase Authentication. Stop new writes and attempt to flush pending writes for at most 30 seconds with user cancellation and immediate terminal-error handling; if some cannot sync, require a separate confirmation that deletion will permanently discard those listed local-only changes. Establish a server-owned deletion tombstone that Security Rules enforce, enqueue a durable deletion job, delete Firestore documents and cloud files idempotently, delete Firebase Authentication only after cloud cleanup, clear cached and local sensitive data after the server accepts the job, and leave the client signed out while the backend completes or retries independently.
 - Do not use an email-only or generic form-only flow as account deletion.
 - Tell subscribed users that deleting an account does not automatically cancel an Apple-managed subscription, and provide subscription management access.
 - Keep App, website, App Store metadata, privacy labels, policies, and FAQ consistent in the same release.
@@ -247,11 +252,17 @@ FinanceEngine tests must cover:
 
 Feature and integration tests must cover:
 
-- Guest onboarding and first Decision Card.
-- Sign-in and explicit local-data migration.
+- Apple and Google sign-in followed by authenticated onboarding and the first Decision Card.
+- Rejection of unauthenticated access to onboarding and core financial features.
+- Sign-out and reauthentication with the same `uid`, including cached data and pending-write recovery.
+- Switching to a different account without exposing the previous user's cached or local financial data.
+- Account switching that waits for acknowledged pending writes, cancels safely on failure, and never silently discards confirmed financial actions.
 - Offline evaluation and recovery after reconnecting.
 - Purchase, defer, skip, and adjust-plan flows.
 - Data export and account deletion entry points.
+- Sign in with Apple reauthentication and authorization revocation, explicit confirmation before discarding unsynced data, deletion-tombstone enforcement against stale tokens and offline retries, durable backend-job continuation after client sign-out, recursive cloud-data deletion, Firebase Authentication deletion, local-cache clearing, partial-failure recovery, and idempotent retry.
+- Network loss before and after tombstone creation, rejected optimistic-write rollback, cache-clear failure blocking a new account session, and attempted recreation of a deleted account state.
+- Pending-write success, terminal error, user cancellation, and 30-second timeout branches for both deletion and ordinary account switching.
 - Subscription purchase, restore, expiry, and entitlement refresh.
 - Reduce Motion and critical accessibility paths.
 
@@ -282,6 +293,7 @@ Use [skills/payreview-release-check/SKILL.md](skills/payreview-release-check/SKI
 - Treat preorder and App Store featuring as optional launch tactics, not guaranteed ranking or exposure.
 - Require explicit product-owner approval before uploading a build, submitting for review, enabling preorder, nominating for featuring, or releasing publicly.
 - Verify current official Apple requirements at execution time because App Store rules change.
+- Document why cross-device financial continuity is a significant account-based feature under App Review Guideline 5.1.1(v). Treat submission as blocked if mandatory login cannot be justified against the current rule.
 
 ## 15. Agent workflow
 
