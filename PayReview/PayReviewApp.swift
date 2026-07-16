@@ -14,7 +14,7 @@ struct PayReviewApp: App {
 
     var body: some Scene {
         WindowGroup {
-            AuthenticationTestView()
+            AppRootView()
                 .onOpenURL { url in
                     GIDSignIn.sharedInstance.handle(url)
                 }

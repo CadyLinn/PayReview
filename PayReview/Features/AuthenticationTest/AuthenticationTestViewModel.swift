@@ -1,17 +1,17 @@
 import Combine
+import AuthenticationServices
 import FirebaseAuth
 import Foundation
 
 @MainActor
 final class AuthenticationTestViewModel: ObservableObject {
     @Published private(set) var authenticatedUser: AuthenticatedUser?
-    @Published var email = ""
-    @Published var password = ""
     @Published var notice: String?
     @Published var errorMessage: String?
     @Published private(set) var isWorking = false
     @Published private(set) var isPreparingAccount = false
     @Published private(set) var isAccountReady = false
+    @Published private(set) var hasResolvedAuthentication = false
 
     private let authenticationService: AuthenticationServicing
     private let accountStateService: AccountStateServicing
@@ -43,6 +43,7 @@ final class AuthenticationTestViewModel: ObservableObject {
             Task { @MainActor in
                 self?.authenticatedUser = user
                 self?.isAccountReady = false
+                self?.hasResolvedAuthentication = true
 
                 if user != nil {
                     await self?.prepareAccountState()
@@ -54,27 +55,20 @@ final class AuthenticationTestViewModel: ObservableObject {
     func signInWithGoogle() async {
         await perform({ [authenticationService] in
             try await authenticationService.signInWithGoogle()
-        }, requiresEmail: false)
+        })
     }
 
-    func signInWithEmail() async {
-        await perform { [authenticationService, email, password] in
-            try await authenticationService.signIn(email: email, password: password)
+    func configureAppleRequest(_ request: ASAuthorizationAppleIDRequest) {
+        do {
+            try authenticationService.configureAppleRequest(request)
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 
-    func createAccount() async {
-        await perform { [authenticationService, email, password] in
-            try await authenticationService.createAccount(email: email, password: password)
-        }
-    }
-
-    func resetPassword() async {
-        let email = email
-        await perform { [authenticationService] in
-            try await authenticationService.sendPasswordReset(to: email)
-        } onSuccess: {
-            self.notice = "重設密碼信已寄出。"
+    func completeAppleSignIn(_ result: Result<ASAuthorization, Error>) async {
+        await perform {
+            try await self.authenticationService.completeAppleSignIn(result)
         }
     }
 
@@ -105,14 +99,8 @@ final class AuthenticationTestViewModel: ObservableObject {
 
     private func perform(
         _ action: @escaping () async throws -> Void,
-        requiresEmail: Bool = true,
         onSuccess: (() -> Void)? = nil
     ) async {
-        guard !requiresEmail || !email.isEmpty else {
-            errorMessage = "請先輸入 Email。"
-            return
-        }
-
         isWorking = true
         notice = nil
         errorMessage = nil
