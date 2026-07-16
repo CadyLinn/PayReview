@@ -109,6 +109,8 @@ final class AuthenticationTestViewModel: ObservableObject {
         do {
             try await action()
             onSuccess?()
+        } catch AuthenticationServiceError.cancelled {
+            notice = nil
         } catch {
             errorMessage = error.localizedDescription
         }

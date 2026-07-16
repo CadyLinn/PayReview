@@ -11,37 +11,81 @@ private enum OnboardingPage: Int, CaseIterable, Identifiable {
 
 struct OnboardingFlowView: View {
     let completion: () -> Void
-    @State private var selection = OnboardingPage.futureInSight
+    let skip: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var selection: OnboardingPage
+
+    init(completion: @escaping () -> Void) {
+        self.completion = completion
+        skip = completion
+        _selection = State(initialValue: .futureInSight)
+    }
+
+    init(
+        startsAtFinalPage: Bool,
+        completion: @escaping () -> Void,
+        skip: @escaping () -> Void
+    ) {
+        self.completion = completion
+        self.skip = skip
+        _selection = State(initialValue: startsAtFinalPage ? .personalRoute : .futureInSight)
+    }
 
     var body: some View {
         ZStack {
             PayReviewTheme.background.ignoresSafeArea()
 
-            TabView(selection: $selection) {
-                ForEach(OnboardingPage.allCases) { page in
-                    OnboardingDesignCanvas {
-                        pageContent(page)
-                    }
-                    .tag(page)
+            if reduceMotion {
+                OnboardingDesignCanvas {
+                    pageContent(selection)
                 }
+                .id(selection)
+                .transition(.opacity)
+                .gesture(reducedMotionSwipe)
+            } else {
+                TabView(selection: $selection) {
+                    ForEach(OnboardingPage.allCases) { page in
+                        OnboardingDesignCanvas {
+                            pageContent(page)
+                        }
+                        .tag(page)
+                    }
+                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .animation(PayReviewMotion.easeOut(PayReviewMotion.reveal), value: selection)
+                .background(PayReviewTheme.background)
+                .ignoresSafeArea()
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            .background(PayReviewTheme.background)
-            .ignoresSafeArea()
         }
+    }
+
+    private var reducedMotionSwipe: some Gesture {
+        DragGesture(minimumDistance: 24)
+            .onEnded { value in
+                let nextValue: Int
+                if value.translation.width < -36 {
+                    nextValue = min(selection.rawValue + 1, OnboardingPage.allCases.count - 1)
+                } else if value.translation.width > 36 {
+                    nextValue = max(selection.rawValue - 1, 0)
+                } else {
+                    return
+                }
+                guard let next = OnboardingPage(rawValue: nextValue), next != selection else { return }
+                withAnimation(.easeOut(duration: 0.25)) { selection = next }
+            }
     }
 
     @ViewBuilder
     private func pageContent(_ page: OnboardingPage) -> some View {
         switch page {
         case .futureInSight:
-            FutureInSightPage(selection: $selection, completion: completion)
+            FutureInSightPage(selection: $selection, skip: skip, isActive: selection == page)
         case .swipeDifference:
-            SwipeDifferencePage(selection: $selection, completion: completion)
+            SwipeDifferencePage(selection: $selection, skip: skip, isActive: selection == page)
         case .revealImpact:
-            RevealImpactPage(selection: $selection, completion: completion)
+            RevealImpactPage(selection: $selection, skip: skip, isActive: selection == page)
         case .personalRoute:
-            PersonalRoutePage(selection: $selection, completion: completion)
+            PersonalRoutePage(selection: $selection, completion: completion, skip: skip, isActive: selection == page)
         }
     }
 }
@@ -67,7 +111,8 @@ private struct OnboardingDesignCanvas<Content: View>: View {
 
 private struct FutureInSightPage: View {
     @Binding var selection: OnboardingPage
-    let completion: () -> Void
+    let skip: () -> Void
+    let isActive: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var breathes = false
 
@@ -80,25 +125,32 @@ private struct FutureInSightPage: View {
                 .foregroundStyle(PayReviewTheme.primaryText)
                 .frame(width: 345, alignment: .center)
                 .position(x: 196.5, y: 44)
+                .payReviewSlideReveal(isActive: isActive, edge: .bottom, delay: 0.05, distance: 18)
 
             ForEach([286.0, 232.0, 184.0], id: \.self) { size in
                 Circle()
                     .stroke(PayReviewTheme.safe, lineWidth: size == 232 ? 2 : 1)
                     .frame(width: size, height: size)
                     .position(x: 196.5, y: 243)
-                    .scaleEffect(breathes && !reduceMotion ? 1.025 : 1)
+                    .scaleEffect(breathes && !reduceMotion ? 1.012 : 1)
             }
+            .payReviewDepthReveal(isActive: isActive, delay: 0.02)
 
             mascot(size: 168)
                 .position(x: 196.5, y: 243)
-                .scaleEffect(breathes && !reduceMotion ? 1.02 : 1)
+                .scaleEffect(breathes && !reduceMotion ? 1.008 : 1)
+                .modifier(PayReviewFloatingEffect())
+                .payReviewDepthReveal(isActive: isActive, delay: 0.06)
 
             FinanceSignal(title: "今天可用", value: "NT$680")
                 .position(x: 74.5, y: 180)
+                .payReviewSlideReveal(isActive: isActive, edge: .leading, delay: 0.28, distance: 96)
             FinanceSignal(title: "日本旅遊", value: "11 個月")
                 .position(x: 318.5, y: 211)
+                .payReviewSlideReveal(isActive: isActive, edge: .trailing, delay: 0.38, distance: 96)
             FinanceSignal(title: "下一步", value: "先看影響")
                 .position(x: 98.5, y: 343)
+                .payReviewSlideReveal(isActive: isActive, edge: .leading, delay: 0.48, distance: 96)
 
             Text("你想完成的目標，\n不該等到月底才被想起")
                 .font(.system(size: 30, weight: .bold))
@@ -107,6 +159,7 @@ private struct FutureInSightPage: View {
                 .lineSpacing(1)
                 .frame(width: 345)
                 .position(x: 196.5, y: 478)
+                .payReviewSlideReveal(isActive: isActive, edge: .leading, delay: 0.50)
 
             Text("在每次付款前，先看見今天的選擇會把你帶向哪裡")
                 .font(.system(size: 16))
@@ -114,16 +167,20 @@ private struct FutureInSightPage: View {
                 .multilineTextAlignment(.center)
                 .frame(width: 317)
                 .position(x: 196.5, y: 548)
+                .payReviewSlideReveal(isActive: isActive, edge: .trailing, delay: 0.56)
 
             onboardingCapsule("向左滑，看看記帳還能做到什麼　›") {
-                withAnimation { selection = .swipeDifference }
+                withAnimation(PayReviewMotion.easeOut(PayReviewMotion.reveal)) { selection = .swipeDifference }
             }
             .position(x: 196.5, y: 719)
+            .payReviewSlideReveal(isActive: isActive, edge: .leading, delay: 0.64)
 
             PageIndicator(selection: selection)
                 .position(x: 196.5, y: 796)
+                .payReviewSlideReveal(isActive: isActive, edge: .bottom, delay: 0.70, distance: 24)
 
-            skipButton(completion)
+            skipButton(skip)
+                .payReviewSlideReveal(isActive: isActive, edge: .trailing, delay: 0.12, distance: 32)
         }
         .onAppear {
             guard !reduceMotion else { return }
@@ -136,43 +193,53 @@ private struct FutureInSightPage: View {
 
 private struct SwipeDifferencePage: View {
     @Binding var selection: OnboardingPage
-    let completion: () -> Void
+    let skip: () -> Void
+    let isActive: Bool
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             PayReviewTheme.background
-            onboardingHeader("01　不只回頭看", selection: $selection, previous: .futureInSight, completion: completion)
+            onboardingHeader("01　不只回頭看", selection: $selection, previous: .futureInSight, skip: skip)
+                .payReviewSlideReveal(isActive: isActive, edge: .bottom, delay: 0.02, distance: 20)
 
             Text("記帳的下一步，是在花錢\n前先知道結果")
                 .font(.system(size: 29, weight: .bold))
                 .foregroundStyle(PayReviewTheme.primaryText)
                 .frame(width: 345, alignment: .leading)
                 .position(x: 196.5, y: 110)
+                .payReviewSlideReveal(isActive: isActive, edge: .leading, delay: 0.08)
 
             afterSpendingCard
                 .rotationEffect(.degrees(5))
                 .opacity(0.58)
                 .position(x: -5, y: 360)
+                .payReviewSlideReveal(isActive: isActive, edge: .leading, delay: 0.16, distance: 110)
 
             beforeSpendingCard
                 .position(x: 244, y: 355)
+                .payReviewSlideReveal(isActive: isActive, edge: .trailing, delay: 0.24, distance: 110)
 
             mascot(size: 72)
                 .position(x: 60, y: 602)
+                .modifier(PayReviewFloatingEffect())
+                .payReviewDepthReveal(isActive: isActive, delay: 0.32)
 
             Text("每筆紀錄，會讓下一次評估更貼近你")
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(PayReviewTheme.primaryText)
                 .frame(width: 245, alignment: .leading)
                 .position(x: 230.5, y: 592)
+                .payReviewSlideReveal(isActive: isActive, edge: .trailing, delay: 0.36)
 
             onboardingCapsule("繼續滑動，打開這筆錢的影響　›") {
-                withAnimation { selection = .revealImpact }
+                withAnimation(PayReviewMotion.easeOut(PayReviewMotion.reveal)) { selection = .revealImpact }
             }
             .position(x: 196.5, y: 719)
+            .payReviewSlideReveal(isActive: isActive, edge: .leading, delay: 0.44)
 
             PageIndicator(selection: selection)
                 .position(x: 196.5, y: 796)
+                .payReviewSlideReveal(isActive: isActive, edge: .bottom, delay: 0.50, distance: 24)
         }
     }
 
@@ -217,18 +284,21 @@ private struct SwipeDifferencePage: View {
 
 private struct RevealImpactPage: View {
     @Binding var selection: OnboardingPage
-    let completion: () -> Void
+    let skip: () -> Void
+    let isActive: Bool
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             PayReviewTheme.background
-            onboardingHeader("02　先揭曉，再決定", selection: $selection, previous: .swipeDifference, completion: completion)
+            onboardingHeader("02　先揭曉，再決定", selection: $selection, previous: .swipeDifference, skip: skip)
+                .payReviewSlideReveal(isActive: isActive, edge: .bottom, delay: 0.02, distance: 20)
 
             Text("同一筆 NT$1,000，\n可以先看三種未來")
                 .font(.system(size: 30, weight: .bold))
                 .foregroundStyle(PayReviewTheme.primaryText)
                 .frame(width: 345, alignment: .leading)
                 .position(x: 196.5, y: 111)
+                .payReviewSlideReveal(isActive: isActive, edge: .leading, delay: 0.08)
 
             HStack {
                 VStack(alignment: .leading, spacing: 5) {
@@ -242,15 +312,19 @@ private struct RevealImpactPage: View {
             .frame(width: 345, height: 96)
             .background(PayReviewTheme.darkRaised, in: RoundedRectangle(cornerRadius: 28))
             .position(x: 196.5, y: 212)
+            .payReviewSlideReveal(isActive: isActive, edge: .trailing, delay: 0.15)
 
             revealCard("預算", "超出目前預算 NT$320", PayReviewTheme.cautionSurface, width: 345)
                 .position(x: 196.5, y: 331)
+                .payReviewSlideReveal(isActive: isActive, edge: .leading, delay: 0.22)
 
             revealGoalCard
                 .position(x: 204.5, y: 431)
+                .payReviewSlideReveal(isActive: isActive, edge: .trailing, delay: 0.29)
 
             revealCard("恢復", "接下來 4 天得每天少花 NT$80", PayReviewTheme.darkRaised, width: 305, dark: true)
                 .position(x: 176.5, y: 531)
+                .payReviewSlideReveal(isActive: isActive, edge: .leading, delay: 0.36)
 
             Text("PayReview 不替你說能不能買，\n而是先讓選擇變清楚")
                 .font(.system(size: 15, weight: .medium))
@@ -258,14 +332,17 @@ private struct RevealImpactPage: View {
                 .multilineTextAlignment(.center)
                 .frame(width: 345)
                 .position(x: 196.5, y: 624)
+                .payReviewSlideReveal(isActive: isActive, edge: .trailing, delay: 0.43)
 
             onboardingCapsule("繼續滑動，看看它如何跟著你　›") {
-                withAnimation { selection = .personalRoute }
+                withAnimation(PayReviewMotion.easeOut(PayReviewMotion.reveal)) { selection = .personalRoute }
             }
             .position(x: 196.5, y: 719)
+            .payReviewSlideReveal(isActive: isActive, edge: .leading, delay: 0.50)
 
             PageIndicator(selection: selection)
                 .position(x: 196.5, y: 796)
+                .payReviewSlideReveal(isActive: isActive, edge: .bottom, delay: 0.56, distance: 24)
         }
     }
 
@@ -285,20 +362,25 @@ private struct RevealImpactPage: View {
 private struct PersonalRoutePage: View {
     @Binding var selection: OnboardingPage
     let completion: () -> Void
+    let skip: () -> Void
+    let isActive: Bool
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             PayReviewTheme.background
-            onboardingHeader("03　這是一條屬於你的路", selection: $selection, previous: .revealImpact, completion: completion)
+            onboardingHeader("03　這是一條屬於你的路", selection: $selection, previous: .revealImpact, skip: skip)
+                .payReviewSlideReveal(isActive: isActive, edge: .bottom, delay: 0.02, distance: 20)
 
             Text("PayReview 會把存錢目標，\n變成每天做得到的方向")
                 .font(.system(size: 30, weight: .bold))
                 .foregroundStyle(PayReviewTheme.primaryText)
                 .frame(width: 345, alignment: .leading)
                 .position(x: 196.5, y: 111)
+                .payReviewSlideReveal(isActive: isActive, edge: .leading, delay: 0.08)
 
-            RouteStage()
+            RouteStage(isActive: isActive)
                 .position(x: 196.5, y: 341)
+                .payReviewSlideReveal(isActive: isActive, edge: .trailing, delay: 0.16)
 
             Text("先用幾個簡單問題建立目標、收入、必要支出與彈性\n預算，再試算第一筆消費")
                 .font(.system(size: 15))
@@ -306,6 +388,7 @@ private struct PersonalRoutePage: View {
                 .multilineTextAlignment(.center)
                 .frame(width: 345)
                 .position(x: 196.5, y: 566)
+                .payReviewSlideReveal(isActive: isActive, edge: .leading, delay: 0.28)
 
             Button("開始認識 PayReview", action: completion)
                 .font(.system(size: 17, weight: .semibold))
@@ -313,14 +396,21 @@ private struct PersonalRoutePage: View {
                 .frame(width: 345, height: 48)
                 .background(PayReviewTheme.primary, in: RoundedRectangle(cornerRadius: 12))
                 .position(x: 196.5, y: 694)
+                .buttonStyle(PayReviewPressButtonStyle())
+                .payReviewSlideReveal(isActive: isActive, edge: .trailing, delay: 0.36)
 
             PageIndicator(selection: selection)
                 .position(x: 196.5, y: 796)
+                .payReviewSlideReveal(isActive: isActive, edge: .bottom, delay: 0.44, distance: 24)
         }
     }
 }
 
 private struct RouteStage: View {
+    let isActive: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var routeProgress: CGFloat = 0
+
     var body: some View {
         ZStack(alignment: .topLeading) {
             PayReviewTheme.darkRaised
@@ -339,6 +429,7 @@ private struct RouteStage: View {
                 )
                 path.addLine(to: CGPoint(x: 299, y: 103))
             }
+            .trim(from: 0, to: reduceMotion ? 1 : routeProgress)
             .stroke(PayReviewTheme.safe, style: StrokeStyle(lineWidth: 4, lineCap: .round))
 
             routePoint(x: 30, y: 226, label: "今天", value: "NT$680")
@@ -356,6 +447,18 @@ private struct RouteStage: View {
         }
         .frame(width: 345, height: 334)
         .clipShape(RoundedRectangle(cornerRadius: 32))
+        .onChange(of: isActive, initial: true) { _, active in
+            if reduceMotion {
+                routeProgress = 1
+            } else if active {
+                routeProgress = 0
+                withAnimation(PayReviewMotion.easeOut(PayReviewMotion.reveal).delay(0.12)) {
+                    routeProgress = 1
+                }
+            } else {
+                routeProgress = 0
+            }
+        }
     }
 }
 
@@ -415,6 +518,7 @@ private func onboardingCapsule(_ title: String, action: @escaping () -> Void) ->
             .padding(.leading, 24)
             .background(PayReviewTheme.darkRaised, in: Capsule())
     }
+    .buttonStyle(PayReviewPressButtonStyle())
 }
 
 private func skipButton(_ completion: @escaping () -> Void) -> some View {
@@ -429,11 +533,11 @@ private func onboardingHeader(
     _ label: String,
     selection: Binding<OnboardingPage>,
     previous: OnboardingPage,
-    completion: @escaping () -> Void
+    skip: @escaping () -> Void
 ) -> some View {
     ZStack(alignment: .topLeading) {
         Button {
-            withAnimation { selection.wrappedValue = previous }
+            withAnimation(PayReviewMotion.easeOut(PayReviewMotion.quick)) { selection.wrappedValue = previous }
         } label: {
             Image(systemName: "chevron.left")
                 .font(.system(size: 17, weight: .semibold))
@@ -448,7 +552,7 @@ private func onboardingHeader(
             .foregroundStyle(PayReviewTheme.secondaryText)
             .position(x: 179, y: 42)
 
-        skipButton(completion)
+        skipButton(skip)
     }
 }
 

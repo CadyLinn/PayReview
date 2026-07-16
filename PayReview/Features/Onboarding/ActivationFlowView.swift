@@ -2,18 +2,32 @@ import SwiftUI
 
 struct UnauthenticatedActivationView: View {
     @ObservedObject var viewModel: AuthenticationTestViewModel
-    @State private var showsSignIn = false
+    let replayIntroduction: () -> Void
+    @State private var showsSignIn: Bool
+
+    init(
+        viewModel: AuthenticationTestViewModel,
+        initiallyShowsSignIn: Bool = false,
+        replayIntroduction: @escaping () -> Void
+    ) {
+        self.viewModel = viewModel
+        self.replayIntroduction = replayIntroduction
+        _showsSignIn = State(initialValue: initiallyShowsSignIn)
+    }
 
     var body: some View {
         if showsSignIn {
             PayReviewSignInView(viewModel: viewModel) {
-                withAnimation { showsSignIn = false }
+                withAnimation(PayReviewMotion.easeOut(PayReviewMotion.quick)) { showsSignIn = false }
             }
             .transition(.move(edge: .trailing))
         } else {
-            ValueHookView {
-                withAnimation { showsSignIn = true }
-            }
+            ValueHookView(
+                replayIntroduction: replayIntroduction,
+                continueAction: {
+                    withAnimation(PayReviewMotion.easeOut(0.45)) { showsSignIn = true }
+                }
+            )
             .transition(.move(edge: .leading))
         }
     }
@@ -21,18 +35,22 @@ struct UnauthenticatedActivationView: View {
 
 struct PersonalizedActivationView: View {
     @ObservedObject var store: SetupStore
+    let backToSignIn: () -> Void
     let completion: () -> Void
     @State private var page = 0
 
     var body: some View {
         Group {
             if page == 0 {
-                MoneyFrictionView {
-                    withAnimation { page = 1 }
-                }
+                MoneyFrictionView(
+                    backAction: backToSignIn,
+                    continueAction: {
+                        withAnimation(PayReviewMotion.easeOut(0.42)) { page = 1 }
+                    }
+                )
             } else {
                 GoalChoiceView(store: store, backAction: {
-                    withAnimation { page = 0 }
+                    withAnimation(PayReviewMotion.easeOut(PayReviewMotion.quick)) { page = 0 }
                 }, completion: completion)
             }
         }
@@ -40,44 +58,53 @@ struct PersonalizedActivationView: View {
 }
 
 private struct ValueHookView: View {
+    let replayIntroduction: () -> Void
     let continueAction: () -> Void
+    @State private var isPresented = false
 
     var body: some View {
         ActivationDesignCanvas {
             ZStack(alignment: .topLeading) {
                 PayReviewTheme.surface
 
-                ActivationBackButton(action: {})
-                    .disabled(true)
-                    .opacity(0.45)
-                    .position(x: 34, y: 38)
+                ActivationBackButton(action: replayIntroduction)
+                    .position(x: 46, y: 64)
+                    .accessibilityLabel("重播動態介紹")
+                    .payReviewSlideReveal(isActive: isPresented, edge: .leading, delay: 0.04, distance: 32)
 
                 Circle()
                     .fill(PayReviewTheme.subtle)
                     .frame(width: 220, height: 220)
                     .position(x: 196, y: 162)
+                    .payReviewDepthReveal(isActive: isPresented, delay: 0.02)
                 ActivationMascot(size: 176)
+                    .modifier(PayReviewFloatingEffect())
                     .position(x: 196, y: 162)
+                    .payReviewDepthReveal(isActive: isPresented, delay: 0.06)
                 SpeechBubble("讓每一次的紀錄，\n都幫助你做出更有意識的消費決定")
                     .frame(width: 190, height: 78)
                     .position(x: 269, y: 244)
+                    .payReviewSlideReveal(isActive: isPresented, edge: .trailing, delay: 0.26)
 
                 Text("不要等到月底，")
                     .font(.system(size: 27, weight: .bold))
                     .foregroundStyle(PayReviewTheme.primaryText)
                     .frame(width: 345, alignment: .leading)
                     .position(x: 196.5, y: 327)
+                    .payReviewSlideReveal(isActive: isPresented, edge: .leading, delay: 0.32)
                 Text("才發現自己原來花了那麼多錢")
                     .font(.system(size: 27, weight: .bold))
                     .foregroundStyle(PayReviewTheme.primary)
                     .frame(width: 345, alignment: .leading)
                     .position(x: 196.5, y: 369)
+                    .payReviewSlideReveal(isActive: isPresented, edge: .trailing, delay: 0.38)
 
                 Text("PayReview 會在付款前，先算預算、存錢目標與\n可以調整的方式")
                     .font(.system(size: 16))
                     .foregroundStyle(PayReviewTheme.secondaryText)
                     .frame(width: 345, alignment: .leading)
                     .position(x: 196.5, y: 431)
+                    .payReviewSlideReveal(isActive: isPresented, edge: .leading, delay: 0.44)
 
                 Text("今天能花多少？\n這筆錢會延後財務目標達成嗎？")
                     .font(.system(size: 15, weight: .medium))
@@ -86,19 +113,26 @@ private struct ValueHookView: View {
                     .frame(width: 345, height: 86, alignment: .leading)
                     .background(PayReviewTheme.subtle, in: RoundedRectangle(cornerRadius: 20))
                     .position(x: 196.5, y: 528)
+                    .payReviewSlideReveal(isActive: isPresented, edge: .trailing, delay: 0.50)
 
                 ActivationButton("建立我的用錢計畫", action: continueAction)
                     .position(x: 196.5, y: 674)
+                    .payReviewSlideReveal(isActive: isPresented, edge: .leading, delay: 0.58, distance: 110)
                 ActivationSecondaryButton("我已經有帳號", action: continueAction)
                     .position(x: 196.5, y: 736)
+                    .payReviewSlideReveal(isActive: isPresented, edge: .trailing, delay: 0.66, distance: 110)
             }
         }
+        .onAppear { isPresented = true }
+        .onDisappear { isPresented = false }
     }
 }
 
 private struct MoneyFrictionView: View {
+    let backAction: () -> Void
     let continueAction: () -> Void
     @State private var selection = 1
+    @State private var isPresented = false
 
     private let choices = [
         "不知道今天還能花多少",
@@ -112,21 +146,22 @@ private struct MoneyFrictionView: View {
                 PayReviewTheme.surface
                 ActivationProgress(completedSteps: 1)
                     .position(x: 196.5, y: 17)
-                ActivationBackButton(action: {})
-                    .disabled(true)
-                    .opacity(0.45)
+                ActivationBackButton(action: backAction)
                     .position(x: 34, y: 55)
+                    .payReviewSlideReveal(isActive: isPresented, edge: .leading, delay: 0.02, distance: 32)
 
                 Text("哪一種時刻，最讓你不知道\n怎麼調整？")
                     .font(.system(size: 27, weight: .bold))
                     .foregroundStyle(PayReviewTheme.primaryText)
                     .frame(width: 345, alignment: .leading)
                     .position(x: 196.5, y: 122)
+                    .payReviewSlideReveal(isActive: isPresented, edge: .leading, delay: 0.08)
                 Text("選一個最接近現在的狀況；答案只用來調整你的體驗")
                     .font(.system(size: 15))
                     .foregroundStyle(PayReviewTheme.secondaryText)
                     .frame(width: 345, alignment: .leading)
                     .position(x: 196.5, y: 174)
+                    .payReviewSlideReveal(isActive: isPresented, edge: .trailing, delay: 0.14)
 
                 VStack(spacing: 16) {
                     ForEach(choices.indices, id: \.self) { index in
@@ -155,17 +190,24 @@ private struct MoneyFrictionView: View {
                 }
                 .frame(width: 345)
                 .position(x: 196.5, y: 357)
+                .payReviewSlideReveal(isActive: isPresented, edge: .leading, delay: 0.22, distance: 100)
 
                 ActivationMascot(size: 72)
                     .position(x: 60, y: 571)
+                    .modifier(PayReviewFloatingEffect())
+                    .payReviewDepthReveal(isActive: isPresented, delay: 0.34)
                 SpeechBubble("這不是你的標籤，只是讓我知道\n先從哪裡陪你整理")
                     .frame(width: 244, height: 55)
                     .position(x: 204, y: 564.5)
+                    .payReviewSlideReveal(isActive: isPresented, edge: .trailing, delay: 0.38)
 
                 ActivationButton("下一步：想完成的目標", action: continueAction)
                     .position(x: 196.5, y: 712)
+                    .payReviewSlideReveal(isActive: isPresented, edge: .leading, delay: 0.48, distance: 110)
             }
         }
+        .onAppear { isPresented = true }
+        .onDisappear { isPresented = false }
     }
 }
 
@@ -174,6 +216,7 @@ private struct GoalChoiceView: View {
     let backAction: () -> Void
     let completion: () -> Void
     @State private var showsGoalEditor = false
+    @State private var isPresented = false
 
     var body: some View {
         ActivationDesignCanvas {
@@ -183,22 +226,27 @@ private struct GoalChoiceView: View {
                     .position(x: 196.5, y: 17)
                 ActivationBackButton(action: backAction)
                     .position(x: 46, y: 63)
+                    .payReviewSlideReveal(isActive: isPresented, edge: .leading, delay: 0.02, distance: 32)
 
                 Text("你想先讓哪一筆錢，走向更\n重要的地方？")
                     .font(.system(size: 27, weight: .bold))
                     .foregroundStyle(PayReviewTheme.primaryText)
                     .frame(width: 345, alignment: .leading)
                     .position(x: 208.5, y: 128)
+                    .payReviewSlideReveal(isActive: isPresented, edge: .leading, delay: 0.08)
                 Text("先選一個方向；金額、日期與名稱之後都能調整")
                     .font(.system(size: 15))
                     .foregroundStyle(PayReviewTheme.secondaryText)
                     .frame(width: 345, alignment: .leading)
                     .position(x: 208.5, y: 180)
+                    .payReviewSlideReveal(isActive: isPresented, edge: .trailing, delay: 0.14)
 
                 GoalJourneyCard(store: store) {
                     showsGoalEditor = true
                 }
+                .payReviewInteractiveTilt(maximumAngle: 5, focusedScale: 1.018)
                 .position(x: 196.5, y: 319)
+                .payReviewSlideReveal(isActive: isPresented, edge: .leading, delay: 0.22, distance: 100)
 
                 Button {
                     showsGoalEditor = true
@@ -210,27 +258,33 @@ private struct GoalChoiceView: View {
                 }
                 .background(PayReviewTheme.subtle, in: RoundedRectangle(cornerRadius: 18))
                 .position(x: 196.5, y: 469)
+                .payReviewSlideReveal(isActive: isPresented, edge: .trailing, delay: 0.30)
 
                 HStack(spacing: 25) {
-                    GoalOption(title: "緊急預備金", width: 160) {
+                    GoalOption(title: "緊急預備金", width: 160, selected: store.goalName == "緊急預備金") {
                         store.goalName = "緊急預備金"
                     }
-                    GoalOption(title: "進修計畫", width: 160, filled: false) {
+                    GoalOption(title: "進修計畫", width: 160, filled: false, selected: store.goalName == "進修計畫") {
                         store.goalName = "進修計畫"
                     }
                 }
                 .position(x: 196.5, y: 540)
+                .payReviewSlideReveal(isActive: isPresented, edge: .leading, delay: 0.36)
 
-                GoalOption(title: "自訂目標", width: 345) {
+                GoalOption(title: "自訂目標", width: 345, selected: !["緊急預備金", "進修計畫"].contains(store.goalName)) {
                     store.goalName = "自訂目標"
                     showsGoalEditor = true
                 }
                 .position(x: 196.5, y: 618)
+                .payReviewSlideReveal(isActive: isPresented, edge: .trailing, delay: 0.42)
 
                 ActivationButton("用這個目標建立計畫", action: completion)
                     .position(x: 196.5, y: 712)
+                    .payReviewSlideReveal(isActive: isPresented, edge: .leading, delay: 0.50, distance: 110)
             }
         }
+        .onAppear { isPresented = true }
+        .onDisappear { isPresented = false }
         .sheet(isPresented: $showsGoalEditor) {
             NavigationStack {
                 Form {
@@ -297,6 +351,7 @@ private struct GoalOption: View {
     let title: String
     let width: CGFloat
     var filled = true
+    var selected = false
     let action: () -> Void
 
     var body: some View {
@@ -308,6 +363,14 @@ private struct GoalOption: View {
                 .frame(width: width, height: 58, alignment: .leading)
         }
         .background(filled ? PayReviewTheme.subtle : PayReviewTheme.surface, in: RoundedRectangle(cornerRadius: 18))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(selected ? PayReviewTheme.primary : .clear, lineWidth: 2)
+        }
+        .scaleEffect(selected ? 1.035 : 0.985)
+        .opacity(selected ? 1 : 0.78)
+        .animation(PayReviewMotion.gentleSpring, value: selected)
+        .buttonStyle(PayReviewPressButtonStyle())
     }
 }
 
@@ -374,6 +437,9 @@ struct ActivationBackButton: View {
                 .frame(width: 44, height: 44)
                 .background(Color(red: 240 / 255, green: 247 / 255, blue: 242 / 255), in: Circle())
         }
+        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        .zIndex(20)
     }
 }
 
@@ -429,11 +495,11 @@ struct ActivationSecondaryButton: View {
 }
 
 #Preview("A1") {
-    ValueHookView(continueAction: {})
+    ValueHookView(replayIntroduction: {}, continueAction: {})
 }
 
 #Preview("A3") {
-    MoneyFrictionView(continueAction: {})
+    MoneyFrictionView(backAction: {}, continueAction: {})
 }
 
 #Preview("A4") {

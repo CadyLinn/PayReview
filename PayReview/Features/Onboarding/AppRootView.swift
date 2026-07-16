@@ -6,6 +6,8 @@ struct AppRootView: View {
     @AppStorage("hasSeenPayReviewIntroduction") private var hasSeenIntroduction = false
     @AppStorage("hasCompletedPayReviewPersonalization") private var hasCompletedPersonalization = false
     @AppStorage("hasCompletedPayReviewSetup") private var hasCompletedSetup = false
+    @State private var introductionStartsAtFinalPage = false
+    @State private var startsAtSignIn = false
 
     var body: some View {
         Group {
@@ -13,25 +15,54 @@ struct AppRootView: View {
                 LaunchView()
             } else if authentication.authenticatedUser == nil {
                 if hasSeenIntroduction {
-                    UnauthenticatedActivationView(viewModel: authentication)
+                    UnauthenticatedActivationView(
+                        viewModel: authentication,
+                        initiallyShowsSignIn: startsAtSignIn,
+                        replayIntroduction: {
+                            introductionStartsAtFinalPage = true
+                            startsAtSignIn = false
+                            withAnimation(PayReviewMotion.easeOut(PayReviewMotion.navigation)) {
+                                hasSeenIntroduction = false
+                            }
+                        }
+                    )
                 } else {
-                    OnboardingFlowView {
-                        hasSeenIntroduction = true
-                    }
+                    OnboardingFlowView(
+                        startsAtFinalPage: introductionStartsAtFinalPage,
+                        completion: {
+                            introductionStartsAtFinalPage = false
+                            startsAtSignIn = false
+                            hasSeenIntroduction = true
+                        },
+                        skip: {
+                            introductionStartsAtFinalPage = false
+                            startsAtSignIn = true
+                            withAnimation(.easeOut(duration: 0.25)) {
+                                hasSeenIntroduction = true
+                            }
+                        }
+                    )
                 }
             } else if authentication.isPreparingAccount {
                 AccountPreparationView()
             } else if authentication.isAccountReady {
                 if !hasCompletedPersonalization {
-                    PersonalizedActivationView(store: setupStore) {
-                        hasCompletedPersonalization = true
-                    }
+                    PersonalizedActivationView(
+                        store: setupStore,
+                        backToSignIn: {
+                            startsAtSignIn = true
+                            authentication.signOut()
+                        },
+                        completion: {
+                            hasCompletedPersonalization = true
+                        }
+                    )
                 } else if !hasCompletedSetup {
                     SetupFlowView(store: setupStore) {
                         hasCompletedSetup = true
                     }
                 } else {
-                    TrialEligibilityView()
+                    PayReviewMainFlowView(setupStore: setupStore)
                 }
             } else {
                 AccountRecoveryView(viewModel: authentication)

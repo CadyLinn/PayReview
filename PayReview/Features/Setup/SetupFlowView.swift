@@ -13,7 +13,7 @@ struct SetupFlowView: View {
     @State private var path: [SetupRoute] = []
     let completion: () -> Void
 
-    init(store: SetupStore, completion: @escaping () -> Void = {}) {
+    init(store: SetupStore, completion: @escaping () -> Void) {
         _store = StateObject(wrappedValue: store)
         self.completion = completion
     }
@@ -22,8 +22,8 @@ struct SetupFlowView: View {
         // Uses native SwiftUI NavigationStack so system spacing, back behavior,
         // Dynamic Type, and accessibility remain consistent with iOS.
         NavigationStack(path: $path) {
-            GoalSetupView(store: store) {
-                path.append(.income)
+            IncomeSetupView(store: store) {
+                path.append(.expenses)
             }
             .navigationDestination(for: SetupRoute.self) { route in
                 switch route {
@@ -53,5 +53,5 @@ struct SetupFlowView: View {
 }
 
 #Preview {
-    SetupFlowView(store: SetupStore())
+    SetupFlowView(store: SetupStore(), completion: {})
 }

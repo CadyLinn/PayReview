@@ -14,6 +14,8 @@ enum PayReviewTheme {
 }
 
 struct PayReviewPrimaryButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.body.weight(.bold))
@@ -24,6 +26,13 @@ struct PayReviewPrimaryButtonStyle: ButtonStyle {
                 in: RoundedRectangle(cornerRadius: 16, style: .continuous)
             )
             .contentShape(Rectangle())
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.975 : 1)
+            .shadow(
+                color: PayReviewTheme.primary.opacity(configuration.isPressed ? 0.08 : 0.18),
+                radius: configuration.isPressed ? 2 : 10,
+                y: configuration.isPressed ? 1 : 5
+            )
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: configuration.isPressed)
     }
 }
 

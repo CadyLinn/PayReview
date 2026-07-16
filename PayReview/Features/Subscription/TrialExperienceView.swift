@@ -8,6 +8,10 @@ struct TrialEligibilityView: View {
             ZStack(alignment: .topLeading) {
                 PayReviewTheme.background
 
+                CelebrationBurst(style: .confetti, particleCount: 42)
+                    .frame(width: 360, height: 310)
+                    .position(x: 196.5, y: 185)
+
                 Text("符合資格的年費方案")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(PayReviewTheme.secondaryText)
@@ -102,7 +106,9 @@ struct AllFeaturesUnlockedView: View {
                 }
 
                 Circle().fill(PayReviewTheme.safe).frame(width: 224, height: 224).position(x: 196.5, y: 204)
-                ActivationMascot(size: 160).position(x: 196.5, y: 204)
+                ActivationMascot(size: 160)
+                    .modifier(PayReviewFloatingEffect())
+                    .position(x: 196.5, y: 204)
 
                 Text("完整體驗已解鎖")
                     .font(.system(size: 31, weight: .bold))

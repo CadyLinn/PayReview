@@ -20,6 +20,8 @@ struct BuildingPlanView: View {
                     Circle()
                         .stroke(PayReviewTheme.safe.opacity(0.35), lineWidth: 2)
                         .frame(width: 238, height: 238)
+                        .scaleEffect(isCalculating && !reduceMotion ? 1.08 : 0.96)
+                        .opacity(isCalculating && !reduceMotion ? 0.35 : 0.85)
 
                     ProgressView()
                         .controlSize(.large)
@@ -56,7 +58,7 @@ struct BuildingPlanView: View {
                 .background(PayReviewTheme.darkRaised, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
 
                 if isReady {
-                    Button("查看完整功能", action: completion)
+                    Button("試算我的第一筆消費", action: completion)
                         .buttonStyle(PayReviewPrimaryButtonStyle())
                         .transition(.opacity.combined(with: .scale))
                 } else {
@@ -70,7 +72,11 @@ struct BuildingPlanView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
-            guard !reduceMotion else { return }
+            if reduceMotion {
+                isCalculating = true
+                isReady = true
+                return
+            }
             withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
                 isCalculating = true
             }

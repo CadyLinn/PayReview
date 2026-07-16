@@ -59,6 +59,9 @@ struct SetupCompleteView: View {
 
     private var celebration: some View {
         ZStack {
+            CelebrationBurst(style: .fireworks, particleCount: 40)
+                .frame(width: 310, height: 210)
+
             ForEach(0..<12, id: \.self) { index in
                 Circle()
                     .fill(index.isMultiple(of: 2) ? PayReviewTheme.safe : Color.orange)
@@ -77,6 +80,7 @@ struct SetupCompleteView: View {
                 .frame(width: 160, height: 160)
                 .clipShape(Circle())
                 .scaleEffect(revealsCelebration ? 1 : 0.92)
+                .modifier(PayReviewFloatingEffect())
         }
         .frame(height: 210)
         .accessibilityElement(children: .ignore)

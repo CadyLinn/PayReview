@@ -22,10 +22,12 @@ protocol AuthenticationServicing {
 }
 
 enum AuthenticationServiceError: LocalizedError {
+    case cancelled
     case missingGoogleClientID
     case missingGoogleIDToken
     case missingPresentationContext
     case nonceGenerationFailed
+    case appleAuthorizationUnavailable
     case missingAppleNonce
     case missingAppleCredential
     case missingAppleIDToken
@@ -33,6 +35,8 @@ enum AuthenticationServiceError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
+        case .cancelled:
+            return nil
         case .missingGoogleClientID:
             return "Google 登入設定不完整。"
         case .missingGoogleIDToken:
@@ -41,6 +45,8 @@ enum AuthenticationServiceError: LocalizedError {
             return "無法顯示 Google 登入畫面。"
         case .nonceGenerationFailed:
             return "無法安全地開始 Apple 登入，請再試一次。"
+        case .appleAuthorizationUnavailable:
+            return "Apple 登入目前無法啟動，請確認裝置的 Apple ID 與網路狀態後再試一次。"
         case .missingAppleNonce, .missingAppleCredential:
             return "Apple 登入狀態無法驗證，請再試一次。"
         case .missingAppleIDToken, .invalidAppleIDToken:
@@ -69,7 +75,13 @@ final class AuthenticationService: AuthenticationServicing {
         }
 
         GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
-        let result = try await GIDSignIn.sharedInstance.signIn(withPresenting: try presentingViewController())
+        let result: GIDSignInResult
+        do {
+            result = try await GIDSignIn.sharedInstance.signIn(withPresenting: try presentingViewController())
+        } catch {
+            guard (error as NSError).code == GIDSignInError.canceled.rawValue else { throw error }
+            throw AuthenticationServiceError.cancelled
+        }
 
         guard let idToken = result.user.idToken?.tokenString else {
             throw AuthenticationServiceError.missingGoogleIDToken
@@ -90,7 +102,16 @@ final class AuthenticationService: AuthenticationServicing {
     }
 
     func completeAppleSignIn(_ result: Result<ASAuthorization, Error>) async throws {
-        let authorization = try result.get()
+        let authorization: ASAuthorization
+        do {
+            authorization = try result.get()
+        } catch let error as ASAuthorizationError where error.code == .canceled {
+            currentAppleNonce = nil
+            throw AuthenticationServiceError.cancelled
+        } catch is ASAuthorizationError {
+            currentAppleNonce = nil
+            throw AuthenticationServiceError.appleAuthorizationUnavailable
+        }
         guard let appleCredential = authorization.credential as? ASAuthorizationAppleIDCredential else {
             throw AuthenticationServiceError.missingAppleCredential
         }
