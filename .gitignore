@@ -3,5 +3,3 @@ DerivedData/
 firebase-debug*.log
 functions/lib/
 functions/node_modules/
-xcuserdata/
-*.xcuserstate
