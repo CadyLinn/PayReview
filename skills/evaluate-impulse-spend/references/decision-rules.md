@@ -58,19 +58,6 @@ If the category is absent or the history does not meet the product's configured 
 
 The rolling-window choice remains a product configuration. Do not hard-code 30 days until the owner resolves that decision.
 
-## Price option
-
-```text
-merchandiseSubtotal = basePrice * quantity
-discountedSubtotal = merchandiseSubtotal * (1 - percentageDiscountRate) - fixedDiscount
-finalPayment = max(0, discountedSubtotal - couponAmount) + shipping + requiredFees
-unitPrice = finalPayment / comparableQuantity
-```
-
-Allow the user to override and confirm `finalPayment`. Compare final payment only for the same quantity and specification. Compare unit price for different sizes with the same unit. Treat different variants or missing units as non-comparable.
-
-Do not assign automatic value to points, cashback, gifts, installment benefits, membership conditions, or complex thresholds. Preserve these as notes unless the user supplies a verified final payment.
-
 ## Output contract
 
 ```text
@@ -80,7 +67,6 @@ DecisionCard
   flexible_budget_before: money
   flexible_budget_after: money
   safe_to_spend_range: money range
-  price_action: optional verified comparison
   frequency_insight: count and window | insufficient data
   goal_effect: unchanged | needs_recovery | delayed_by_user_choice
   recovery_options: zero or more explicit actions

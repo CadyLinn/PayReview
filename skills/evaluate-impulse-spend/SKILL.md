@@ -16,7 +16,7 @@ Read [references/decision-rules.md](references/decision-rules.md) before calcula
 Gather the minimum available data:
 
 - Proposed amount, currency, evaluation time, and time zone.
-- Optional category, purchase intent, product, and selected store offer.
+- Optional category and purchase intent.
 - Flexible-budget period, allocation, and confirmed spending.
 - Essential planned expenses remaining before the next income date.
 - Protected goal contributions and explicitly available safety buffer.
@@ -27,7 +27,7 @@ Do not require a category for quick evaluation. If required financial data is mi
 
 ## Evaluate in order
 
-1. Validate currency, non-negative amounts, date boundaries, and comparable offer units.
+1. Validate currency, non-negative amounts, and date boundaries.
 2. Reserve essential planned expenses and protected goal contributions.
 3. Calculate flexible budget before and after the proposed purchase.
 4. Calculate a conservative safe-to-spend range from uncertain planned amounts.
@@ -41,12 +41,11 @@ Do not require a category for quick evaluation. If required financial data is mi
 
 Lead with one calm conclusion. Then answer:
 
-1. Price action: the chosen offer and verified savings, if comparison data exists.
-2. Budget impact: before and after amounts for the relevant periods.
-3. Frequency: confirmed occurrence count or an insufficient-data statement.
-4. Goal impact: unchanged, recovery needed, or delayed only under the allowed rule.
+1. Budget impact: before and after amounts for the relevant periods.
+2. Frequency: confirmed occurrence count or an insufficient-data statement.
+3. Goal impact: unchanged, recovery needed, or delayed only under the allowed rule.
 
-Include at least one recovery option when the purchase reduces protected flexibility. Examples include reducing future discretionary spending by a stated amount, moving the purchase to a later income period, choosing a lower verified offer, or explicitly changing the plan.
+Include at least one recovery option when the purchase reduces protected flexibility. Examples include reducing future discretionary spending by a stated amount, moving the purchase to a later income period, or explicitly changing the plan.
 
 Use language such as `可以購買，但會壓縮本週的彈性空間`. Do not use shame, urgency, streaks, rewards for skipping, or claims such as `你不該買`.
 
@@ -62,7 +61,7 @@ Use language such as `可以購買，但會壓縮本週的彈性空間`. Do not 
 
 - Use `Decimal` for currency. Do not use `Double` or `Float`.
 - Use `Calendar` with an explicit time zone for period boundaries.
-- Keep calculations deterministic and independent of SwiftUI, Firebase, and generated text.
+- Keep calculations deterministic and independent of SwiftUI, persistence providers, and generated text.
 - Keep user-facing explanations derived from typed calculation results.
 - Write all source-code comments in English and use no emoji.
 - Do not send raw amounts, merchant names, goal names, or notes to analytics.
@@ -79,6 +78,5 @@ Test at minimum:
 - Month end, leap day, daylight-saving change, and next-income-date boundary.
 - A planned expense matched to a transaction without double deduction.
 - Scenario evaluation without persistent budget mutation.
-- Same-item price comparison and non-comparable unit handling.
 
 Report assumptions and failing cases. Do not weaken a rule to make a test pass.

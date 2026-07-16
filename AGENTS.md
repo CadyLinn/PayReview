@@ -1,13 +1,13 @@
 # PayReview Repository Agent Rules
 
-This file defines the mandatory rules for AI agents and contributors working in this repository.
+This file defines the mandatory rules for AI agents and contributors working in this repository. Its name is `AGENTS.md` so compatible coding agents can discover it automatically.
 
 ## 1. Instruction priority
 
 Use the following sources in order:
 
 1. The user's current explicit request.
-2. This `AGENT.md` file.
+2. This `AGENTS.md` file.
 3. [PRODUCT_PLAN_V0.2.md](PRODUCT_PLAN_V0.2.md) for product behavior, scope, copy, and brand direction.
 4. [PRODUCT_LAUNCH_PLAN_V0.2.md](PRODUCT_LAUNCH_PLAN_V0.2.md) for onboarding, subscriptions, analytics, App Store preparation, and release operations.
 5. [TECH_STACK.md](TECH_STACK.md) for technical direction after unresolved architecture decisions have been approved.
@@ -23,8 +23,7 @@ The product must help the user understand before payment:
 
 1. What changes if this purchase happens now.
 2. Whether similar confirmed purchases have happened frequently.
-3. How to make the purchase with the least disruption to the existing plan.
-4. What recovery action can preserve the budget or goal.
+3. What recovery action can preserve the budget or goal.
 
 Use the product promise:
 
@@ -55,7 +54,7 @@ Never shame the user, celebrate spending, block a purchase, or present the produ
 
 - Ask for the amount first. Keep category optional for quick evaluation.
 - Show a clear conclusion before detailed cards.
-- Answer price, budget, frequency, and goal impact when data is available.
+- Answer budget, frequency, and goal impact when data is available.
 - State that data is insufficient when a reliable result cannot be calculated.
 - Offer `購買並記錄`, `晚點決定`, `略過`, and `調整計畫` after evaluation.
 
@@ -109,24 +108,6 @@ Do not automatically label a purchase as impulsive because it exceeds the flexib
 - Show `資料不足，尚未計算頻率。` when the category or history is insufficient.
 - Do not hard-code a rolling window until the product owner confirms whether to use 30 days, the income cycle, or a user-configurable period.
 
-### Price comparison
-
-- Treat offers as manual, user-entered information. Do not claim an automatic market-wide lowest price.
-- Compare final payment only for equivalent specifications and quantities.
-- Compare unit price only when units are compatible.
-- Flag different variants or missing units as non-comparable.
-- Allow the user to review and override the final checkout amount.
-- Do not assign automatic monetary value to points, cashback, gifts, installment benefits, or complex promotion conditions.
-
-Use:
-
-```text
-merchandiseSubtotal = basePrice * quantity
-discountedSubtotal = merchandiseSubtotal * (1 - percentageDiscountRate) - fixedDiscount
-finalPayment = max(0, discountedSubtotal - couponAmount) + shipping + requiredFees
-unitPrice = finalPayment / comparableQuantity
-```
-
 ## 6. Scenario and transaction integrity
 
 - Keep `SpendScenario` temporary and local until the user confirms an action.
@@ -134,7 +115,6 @@ unitPrice = finalPayment / comparableQuantity
 - Create a `Transaction` only after `購買並記錄` confirmation.
 - Save a deferred or skipped decision only after the user chooses to preserve it.
 - Make confirmation operations idempotent so repeated taps or retries cannot create duplicate transactions.
-- Store the selected `PriceOption` identifier in the scenario snapshot when comparison is used.
 - Treat confirmed transactions as the source of truth for actual spending history.
 
 ## 7. iOS architecture rules
@@ -158,7 +138,6 @@ Features
   Onboarding
   Today
   Evaluate
-  PriceComparison
   Plan
   Records
   Settings
@@ -180,21 +159,22 @@ Tests
 
 ## 8. Persistence and synchronization rules
 
-- Keep anonymous trial data on device.
-- Ask for explicit confirmation before migrating local trial data into an account.
-- Maintain one authoritative synchronization source for signed-in financial data.
+- Use SwiftData as the only financial-data store for MVP.
+- Keep guest and signed-in financial plans on device during MVP.
+- Do not make sign-in a dependency of local financial calculation or bookkeeping.
+- Keep unconfirmed scenarios local.
+- Do not implement cross-device financial-data synchronization during MVP.
+- Do not describe sign-in as providing backup or cross-device sync until that functionality exists.
+- Before adding synchronization, record an architecture decision that selects exactly one authoritative cloud source.
+- Ask for explicit confirmation before migrating local data into a future cloud account.
 - Do not implement simultaneous CloudKit and Firestore bidirectional synchronization.
 - Define conflict resolution, deletion propagation, retry behavior, and offline recovery before enabling cross-device sync.
-- Keep unconfirmed scenarios local even when account sync is enabled.
 
-### Architecture decision required
+### Post-MVP architecture decision
 
-The current v0.2 documents do not yet establish one final cloud direction:
+CloudKit and Firestore remain candidates for a future synchronization release. Neither is approved for MVP.
 
-- `PRODUCT_PLAN_V0.2.md` describes SwiftData first and CloudKit later.
-- `TECH_STACK.md` proposes Firestore for signed-in synchronization.
-
-Do not start cloud synchronization implementation until the team records one decision: CloudKit, Firestore, or local-only for MVP. Update all affected documents in the same PR after the decision.
+Do not start cloud synchronization work until the team records an architecture decision covering provider choice, ownership, conflict resolution, migration, deletion, offline behavior, security, and operating cost. Update all affected documents in the same PR after that decision.
 
 ## 9. Authentication, privacy, and permissions
 
@@ -264,7 +244,6 @@ FinanceEngine tests must cover:
 - `within_flexible`, `uses_buffer`, `requires_plan_change`, and `insufficient_data`.
 - Goal unchanged, feasible recovery, explicit goal-fund use, and actual delay.
 - Month end, year end, leap day, time-zone change, and next-income-date boundaries.
-- Comparable and non-comparable price options.
 - Insufficient and sufficient frequency history.
 - Planned-expense matching without double deduction.
 - Repeated confirmation without duplicate transaction creation.

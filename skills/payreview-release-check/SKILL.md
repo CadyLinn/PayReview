@@ -29,17 +29,17 @@ If an input is missing, mark it `block` or `not applicable`. Do not infer a date
 - Test `within_flexible`, `uses_buffer`, and `requires_plan_change` decisions.
 - Confirm goal delay appears only after goal-reserve use or an infeasible recovery plan.
 - Confirm a transaction that fulfils a planned expense is not deducted twice.
-- Test manual price comparison with same-size and different-size offers.
 - Verify income, expense, transfer, categories, date, note, and tags in daily bookkeeping.
 
 ### 2. Privacy, account, and permissions
 
 - Verify the privacy policy, terms, and in-app privacy explanation match the website and App Store listing.
-- Verify Sign in with Apple and Google Sign-In work through Firebase Authentication.
-- Verify guest-mode data behavior and the explicit migration path after account creation.
+- Verify Sign in with Apple and Google Sign-In work through the approved authentication provider.
+- Verify guest-mode and signed-in financial data remain usable through the SwiftData MVP store.
 - Verify data export is reachable in the app.
 - Verify account deletion starts in the app and completes through a secure authenticated flow; do not accept an email-only or contact-form-only process.
-- Confirm Firestore rules isolate data by authenticated user ID.
+- Confirm the release does not claim cloud backup or cross-device financial-data synchronization.
+- If a later release enables cloud synchronization, verify user isolation and access-control rules for the approved provider.
 - Confirm notification permission is requested only after the user enables a reminder and sees a purpose explanation.
 - Confirm no unsupported access to banking, payment, LINE, contacts, location, camera, or photos is requested.
 
@@ -71,9 +71,9 @@ If an input is missing, mark it `block` or `not applicable`. Do not infer a date
 ### 6. Quality and observability
 
 - Run automated tests for FinanceEngine money rounding, dates, budget allocation, goal timing, and duplicate deduction.
-- Test offline evaluation and recovery after reconnecting to Firestore.
-- Check Firebase Analytics event naming and ensure no raw financial or free-text personal data is sent.
-- Check Crashlytics has no known release-blocking crash or non-fatal error.
+- Test offline evaluation and SwiftData persistence across app relaunch.
+- Check the approved analytics provider and ensure no raw financial or free-text personal data is sent.
+- Check the approved crash-reporting provider for release-blocking crashes or non-fatal errors.
 - Verify all source-code comments and project documentation are in English where code standards require it, and contain no emoji.
 
 ### 7. Submission and release actions
