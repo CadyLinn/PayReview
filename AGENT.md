@@ -1,386 +1,331 @@
-# 花算 PayReview Project Agent v0.2
+# PayReview Repository Agent Rules
 
-## Instruction scope
+This file defines the mandatory rules for AI agents and contributors working in this repository.
 
-This file is the repository-level source of truth for product and engineering agents working on PayReview. Apply it to product specifications, Swift code, tests, analytics, website copy, App Store material, and release work. If an implementation request conflicts with a financial safety, privacy, or data-integrity rule here, stop and report the conflict before changing the product.
+## 1. Instruction priority
 
-## Product definition
+Use the following sources in order:
 
-**花算 PayReview** is a pre-spend personal finance decision app, not only a bookkeeping app.
+1. The user's current explicit request.
+2. This `AGENT.md` file.
+3. [PRODUCT_PLAN_V0.2.md](PRODUCT_PLAN_V0.2.md) for product behavior, scope, copy, and brand direction.
+4. [PRODUCT_LAUNCH_PLAN_V0.2.md](PRODUCT_LAUNCH_PLAN_V0.2.md) for onboarding, subscriptions, analytics, App Store preparation, and release operations.
+5. [TECH_STACK.md](TECH_STACK.md) for technical direction after unresolved architecture decisions have been approved.
+6. Feature specifications and tests.
 
-Its promise is:
+Do not silently resolve a conflict between these sources. Report the conflict, identify the affected files, and request a product or architecture decision before implementing behavior that depends on it.
 
-> 花錢前，先算清楚價格與影響。
+## 2. Product mission
 
-Before a user pays, the product explains how a possible purchase changes their remaining budget, recent spending frequency, savings goal, and available lower-price options. It does not shame, block, or decide for the user.
+Build PayReview as a pre-spend personal finance decision product, not merely a bookkeeping app.
 
-The name combines the sound of 「划算」 with 「花」 to express that every expense is worth calculating before payment. `PayReview` means reviewing a payment against the user's current financial plan. Trademark, domain, and App Store name clearance remain required before public launch.
+The product must help the user understand before payment:
 
-## Product principles
+1. What changes if this purchase happens now.
+2. Whether similar confirmed purchases have happened frequently.
+3. How to make the purchase with the least disruption to the existing plan.
+4. What recovery action can preserve the budget or goal.
 
-1. **Decision before recording**
+Use the product promise:
 
-   Evaluate a proposed expense before creating a confirmed transaction.
+> 花錢前，先算價格與影響。
 
-2. **No guilt, only trade-offs**
+Never shame the user, celebrate spending, block a purchase, or present the product as making the final decision for them.
 
-   Explain opportunity cost and recovery options without labeling a user irresponsible or telling them they cannot buy something.
+## 3. Language and repository standards
 
-3. **Minimal setup, immediate value**
+- Write all source-code comments in English.
+- Do not use emoji in source code, comments, identifiers, commit messages, release notes, or project documentation.
+- Write user-facing Traditional Chinese copy in a calm, concise, and non-judgmental tone.
+- Use consistent product terms from the product plan. Do not invent synonyms for financial states without updating the specification.
+- Use Markdown for product and engineering documentation.
+- Keep files focused. Link to the source document instead of duplicating long product specifications.
+- Do not commit `.DS_Store`, secrets, generated credentials, local build output, or personal test data.
+- Never log authentication tokens, exact financial content, private notes, merchant names, or personally identifiable information.
 
-   Initial setup must take two to four minutes. Do not require bank credentials, a salary slip, or a complete historical ledger.
+## 4. Product experience rules
 
-4. **Rules calculate; language explains**
+### Today
 
-   A deterministic, testable finance engine calculates all money, dates, and thresholds. Any AI writing layer may rephrase completed calculations but must never invent a number or conclusion.
+- Make Today a financial navigation page, not a chart-heavy dashboard.
+- Show safe-to-spend guidance, the next planned expense, one clear evaluation action, one goal state, and one useful observation.
+- Keep `評估一筆消費` as the single dominant action. Do not hide it in a generic plus button or overflow menu.
 
-5. **Privacy by default**
+### Evaluate
 
-   Request only the permission needed for the action the user just chose. Do not read LINE, banking, credit-card, or payment-app notifications in version one.
+- Ask for the amount first. Keep category optional for quick evaluation.
+- Show a clear conclusion before detailed cards.
+- Answer price, budget, frequency, and goal impact when data is available.
+- State that data is insufficient when a reliable result cannot be calculated.
+- Offer `購買並記錄`, `晚點決定`, `略過`, and `調整計畫` after evaluation.
 
-6. **Explain every number**
+### Plan
 
-   Decision results must retain their inputs, assumptions, calculation date, and calculation-rule version.
+- Treat income cycle, planned expenses, flexible budget, safety buffer, goals, and non-negotiable items as calculation assumptions.
+- Show assumptions and allow the user to review or update them.
 
-## App information architecture
+### Records
 
-| Page | User question | Primary content |
-| --- | --- | --- |
-| Today | What do I need to know now? | safe-to-spend amount, next planned expense, goal status, useful observation, evaluate-spend entry point |
-| Evaluate | If I buy this, what changes? | quick evaluation, manual price comparison, Decision Card, purchase or defer actions |
-| Plan | What have I committed to? | income cycle, planned expenses, flexible budget, safety buffer, goals, non-negotiable items |
-| Records | What actually happened? | income, expense, transfer, categories, tags, notes, price comparisons, deferred and skipped decisions |
-| Settings | How is my account and data managed? | sign-in, subscription, notifications, privacy, export, account deletion, support |
+- Store confirmed transactions separately from evaluated scenarios.
+- Support income, expense, transfer, category, date, note, and tags.
+- Do not count a transfer as income or expense.
+- When a transaction fulfills a planned expense occurrence, complete that occurrence and prevent duplicate deduction.
 
-The Today page must have one dominant action: **Evaluate a spend**. Do not hide it in a menu or a generic plus button.
+## 5. Financial calculation rules
 
-The Today page is financial navigation, not a chart-heavy dashboard. Order content as safe-to-spend amount, today's expected expense with completion actions, the dominant evaluation action, one goal status, and one useful observation. Keep pie charts and broad reporting out of the first release.
+- Implement all monetary and date calculations in a deterministic, testable `FinanceEngine` module.
+- Keep `FinanceEngine` independent of SwiftUI, authentication, analytics, and cloud persistence.
+- Use `Decimal` for currency. Never use `Double` or `Float` for money.
+- Use `Calendar` with an explicit time zone for financial periods and target dates.
+- Reserve essential and expected expenses before calculating flexible spending.
+- Reserve the minimum contribution for protected goals before calculating safe-to-spend guidance.
+- Present safe-to-spend as an estimate or range when inputs are uncertain. Never present it as a guarantee.
+- Preserve calculation inputs, assumptions, data freshness, evaluation time, time zone, and rule version in `DecisionSnapshot`.
+- Let AI explain calculated results only. Never let generated text invent, change, round independently, or override a financial result.
 
-## Launch and sign-in flow
+### Decision status
 
-1. Draw the icon transition for no more than 0.8 seconds and respect Reduce Motion.
-2. Open Today immediately when a usable local financial plan exists.
-3. Otherwise show the welcome screen with the title `付錢前，先看影響。`
-4. Offer Sign in with Apple, Google Sign-In, and `先試用看看`, in that order.
-5. Create local guest data for trial use. Request sign-in only for backup, device migration, cross-device sync, or an account-only feature.
+Use the following internal states unless the product specification is formally changed:
 
-Never combine sign-in with notification permission, financial-account permission, or marketing consent.
+- `within_flexible`: the purchase fits the remaining flexible allocation.
+- `uses_buffer`: the purchase exceeds flexible allocation but fits a buffer explicitly approved for this scenario.
+- `requires_plan_change`: the purchase requires an explicit change to future discretionary spending, a contribution, or a goal date.
+- `insufficient_data`: required inputs are unavailable or too stale for a reliable result.
 
-## Brand and interface direction
+Do not automatically label a purchase as impulsive because it exceeds the flexible budget. Use `規劃外` or `超出預算` in user-facing copy unless the user explicitly classifies their intent.
 
-Keep the product calm, practical, and gently encouraging. It should feel like a clear-minded friend who explains trade-offs, not a bank back office or a judge.
+### Goal impact
 
-- Use deep ink green or dark blue-green for trust and focus.
-- Use soft mint or teal for safe-to-spend and on-track states.
-- Use warm amber for trade-offs. Reserve red for actual risk.
-- Prefer large monetary values, generous space, and one primary action per screen.
-- Use an icon based on a coin boundary opening into a forward path. Do not use currency symbols, piggy banks, rising charts, mascots, or text in the app icon.
-- Animate the path, onboarding progress, Decision Card sequence, and confirmed amount movement without celebrating spending.
-- Respect the system Reduce Motion setting in every animation.
-
-## Onboarding and interactive teaching
-
-### Required first-run flow
-
-The onboarding flow should feel like a guided conversation rather than a long form. It must collect the minimum financial model in this order:
-
-1. **Goal**
-
-   Ask what the user wants to protect or reach. Collect a name, target amount, current saved amount, target date, and priority: `protected`, `important`, or `adjustable`. If the user cannot name a goal, create an editable `Safety Buffer` goal.
-
-2. **Income cycle**
-
-   Collect income cadence, next income date, and estimated disposable income after mandatory deductions. Do not ask for employer, bank account, or salary detail.
-
-3. **Planned fixed expenses**
-
-   Offer templates for rent, transit, lunch, subscriptions, bills, and other. Each expense has an estimated amount or range, frequency or remaining occurrences, date, and essential flag. Support daily and monthly occurrences.
-
-4. **Flexible budget**
-
-   Ask how much the user wants to reserve each week or month for discretionary choices, interests, entertainment, and planned-expense overage. Let them choose gentle or direct reminder tone.
-
-5. **Ready state**
-
-   Show a transparent estimate such as: “Before the next income date, about NT$680 is available after planned expenses and goals.”
-
-Do not add an onboarding step that asks a user to define “impulse spending.” It is a decision-time state, not financial setup input. Offer optional intent labels when evaluating a purchase: `necessary`, `planned`, or `unplanned`.
-
-### Interactive tutorial content
-
-Before setup, show a short, skippable teaching sequence:
-
-1. **Plan what matters**: goals, fixed expenses, and flexible budget form a usable plan.
-2. **Evaluate before paying**: enter an amount to see budget and goal effects before recording the purchase.
-3. **Compare real offers**: enter prices and promotions seen in different stores; the app calculates final payment and unit price.
-4. **Keep control of data**: no bank login is required; data export and account deletion are always available.
-
-Use the same approved explanation in the app, official website, App Store listing, privacy policy, and support FAQ. Maintain a single reviewed source of product copy; changes to data collection, permissions, pricing, or core functionality must update every public surface in the same release.
-
-### Permission education
-
-- Explain a permission in an in-app screen immediately before the system prompt.
-- Request notification permission only after the user enables an app reminder. Explain that it is used for deferred purchases, planned expenses, and goal reminders.
-- Do not request financial-account, contact, location, camera, or photo-library access during onboarding.
-- If screenshot import is added later, explain that the image is used only to extract a price for confirmation and request photo access only at that moment.
-
-## Account, storage, and privacy
-
-### Authentication
-
-- Support **Sign in with Apple** and **Google Sign-In** through Firebase Authentication.
-- Keep **Try without an account** available. Trial data stays on the device until the user chooses backup, cross-device sync, or an account-only feature.
-- Do not request notification permission, marketing consent, or financial data as a condition of sign-in.
-
-### Storage model
-
-- Use **Cloud Firestore** as the cloud source of truth for signed-in financial data.
-- Use Firestore offline persistence and a local `FinanceEngine` so the core evaluation remains usable without a network connection.
-- Keep temporary `SpendScenario` calculations local until the user confirms an action.
-- Use local storage for anonymous trial data and offer an explicit, confirmed migration after account creation.
-- iCloud device backup may preserve local app data where the user has enabled iCloud Backup. Do not use CloudKit as a second synchronization source alongside Firestore; it would create conflicting sources of truth.
-
-### Data control
-
-- Provide in-app data export.
-- Provide an in-app **Delete account** entry point. A secure webpage may complete the confirmed deletion flow, but an email-only or contact-form-only request is insufficient.
-- Deletion must remove Firebase Authentication identity, Firestore documents, and user files in Firebase Storage within the stated retention period.
-- Show the privacy policy, terms, data-export action, deletion action, and support contact in Settings.
-
-## Subscription model
-
-Use StoreKit 2 for App Store subscription purchase, entitlement status, restoration, and subscription-management links.
-
-| Plan | Price | Trial | Rule |
-| --- | ---: | --- | --- |
-| Annual | NT$800 per year | Seven days | Trial is available only to eligible users and renews annually after the trial unless cancelled. |
-| Monthly | NT$120 per month | No trial by default | Renews monthly unless cancelled. |
-
-Before purchase, clearly show the plan, price, billing period, trial eligibility, renewal behavior, cancellation path, and what paid access unlocks. Do not present a trial as free when it converts to a paid subscription without this disclosure.
-
-## Financial model and decision rules
-
-### Four layers
-
-| Layer | Contains | Main question |
-| --- | --- | --- |
-| Personal Financial Model | income cycle, accounts, fixed expenses, flexible budget, safety buffer, goals, non-negotiable items | What matters to this person? |
-| Real-time Financial State | confirmed transactions, pending entries, planned income, upcoming bills, committed spending, freshness | What is true now? |
-| Decision Engine | safe-to-spend range, spending pace, goal effects, risk thresholds, recovery options | What does this choice change? |
-| Navigation Experience | Today, Decision Cards, comparison, post-purchase feedback, reminders | What does the user need to do now? |
-
-### Required Decision Card output
+- Keep the goal date unchanged when flexible funds cover the purchase.
+- Show a recovery amount when future discretionary spending can preserve the goal.
+- Calculate use of goal funds only after the user actively selects that scenario.
+- Show a delayed goal date only when the user uses protected goal funds or the minimum savings pace can no longer reach the target date.
+- Never mutate a goal contribution or target date without explicit confirmation.
+
+### Spending frequency
+
+- Count only confirmed expense transactions in the configured category and time window.
+- Exclude transfers, evaluations, deferred purchases, skipped decisions, reversed transactions, and deleted transactions.
+- Show `資料不足，尚未計算頻率。` when the category or history is insufficient.
+- Do not hard-code a rolling window until the product owner confirms whether to use 30 days, the income cycle, or a user-configurable period.
+
+### Price comparison
+
+- Treat offers as manual, user-entered information. Do not claim an automatic market-wide lowest price.
+- Compare final payment only for equivalent specifications and quantities.
+- Compare unit price only when units are compatible.
+- Flag different variants or missing units as non-comparable.
+- Allow the user to review and override the final checkout amount.
+- Do not assign automatic monetary value to points, cashback, gifts, installment benefits, or complex promotion conditions.
+
+Use:
 
 ```text
-DecisionCard
-  status: within_flexible | uses_buffer | requires_plan_change
-  headline: short and neutral conclusion
-  flexible_budget_before: money
-  flexible_budget_after: money
-  safe_to_spend_range: money range
-  frequency_insight: optional
-  goal_effect: unchanged | needs_recovery | delayed_by_user_choice
-  recovery_options: zero or more
-  selected_store_offer: optional
-  decision_snapshot_id: identifier
-```
-
-Every result must answer four questions when data is available:
-
-1. What price action is available, including a better user-entered offer?
-2. What remains today, this week, and before the next income date?
-3. Is this category occurring unusually often based on confirmed history?
-4. Does the choice affect a goal, and what recovery option preserves the plan?
-
-If data is insufficient, state that clearly. Never manufacture an insight to fill a card.
-
-### Classification rules
-
-- `within_flexible`: The purchase fits the remaining flexible budget after reserving essential planned expenses and protected goal contributions.
-- `uses_buffer`: The purchase exceeds flexible budget but fits an explicitly user-approved safety buffer without breaking the plan.
-- `requires_plan_change`: The purchase requires the user to reduce a future discretionary expense, change a goal contribution or date, or make another explicit plan change.
-
-Never automatically call a purchase “impulsive” only because it exceeds a flexible budget. The product can show it as an `unplanned` or `out-of-budget` decision and let the user choose how to classify its intent.
-
-Treat “impulse spending” as a user-facing moment that needs extra clarity, not as a moral label or permanent identity. Trigger an impact reminder when an unplanned purchase exceeds the remaining flexible allocation or threatens a protected reserve. Explain the opportunity cost with amounts, dates, assumptions, and a reversible next action.
-
-Show a goal-date delay only when the user explicitly chooses to spend from the goal reserve or there is no feasible recovery plan that preserves the minimum savings pace before the target date.
-
-### Evaluation sequence
-
-1. Accept an amount and optional category, product, intent, or selected store offer.
-2. Load the current model and confirmed state.
-3. Reserve planned essential expenses and protected goal contributions.
-4. Calculate remaining flexible amount, safe-to-spend range, category frequency, and savings-pace effect.
-5. Calculate comparable store offers if the user added them.
-6. Return a Decision Card with at least one practical recovery option when flexibility is reduced.
-7. Let the user choose **Purchase and record**, **Decide later**, **Skip**, or **Adjust plan**.
-8. Save a `DecisionSnapshot`; create a `Transaction` only after purchase confirmation.
-
-## Price comparison
-
-Price comparison is manual and user-entered. It helps a user compare offers seen in physical shops or online; it is not a marketplace, web crawler, or lowest-price guarantee.
-
-For each store offer, support:
-
-- Store name and note.
-- Product name, variant, size, quantity, and comparable unit.
-- Base price or final checkout price.
-- Percentage discount, fixed discount, coupon, shipping, and required fees.
-- Promotion expiry and conditions such as membership or bundle requirement.
-
-```text
-merchandiseSubtotal = basePrice × quantity
-discountedSubtotal = merchandiseSubtotal × (1 - percentageDiscountRate) - fixedDiscount
+merchandiseSubtotal = basePrice * quantity
+discountedSubtotal = merchandiseSubtotal * (1 - percentageDiscountRate) - fixedDiscount
 finalPayment = max(0, discountedSubtotal - couponAmount) + shipping + requiredFees
 unitPrice = finalPayment / comparableQuantity
 ```
 
-Use `Decimal` for every monetary calculation. Compare final payment only for the same purchase quantity; compare unit price for different quantities or sizes. Flag non-comparable variants. Do not automatically assign a value to gifts, points, or cashback. Let the user enter the final verified payment when a promotion is too complex.
+## 6. Scenario and transaction integrity
 
-## Daily bookkeeping
+- Keep `SpendScenario` temporary and local until the user confirms an action.
+- Never change the real budget, goal balance, or transaction history during evaluation.
+- Create a `Transaction` only after `購買並記錄` confirmation.
+- Save a deferred or skipped decision only after the user chooses to preserve it.
+- Make confirmation operations idempotent so repeated taps or retries cannot create duplicate transactions.
+- Store the selected `PriceOption` identifier in the scenario snapshot when comparison is used.
+- Treat confirmed transactions as the source of truth for actual spending history.
 
-Keep regular accounting available without making it the first required task. Support:
+## 7. iOS architecture rules
 
-- Income.
-- Expense.
-- Transfer between accounts. A transfer is not income or expense.
-- Categories and subcategories.
-- Date, note, and tags.
-- Optional account and payment-method visibility.
-- Basic transaction history and category analysis.
+- Build the UI with SwiftUI and support the minimum iOS version approved by the team.
+- Keep views declarative and free of financial calculations and direct database access.
+- Use a feature state or view model layer for presentation behavior.
+- Use repository protocols between features and persistence implementations.
+- Isolate authentication, subscriptions, notifications, analytics, and storage behind service protocols.
+- Use Swift Concurrency for asynchronous work and maintain actor isolation for mutable shared state.
+- Respect the system Reduce Motion setting for launch, onboarding, Decision Card, and transaction animations.
+- Support Dynamic Type, VoiceOver labels, sufficient contrast, and localized currency and dates.
+- Do not add a third-party dependency when the platform API is sufficient.
+- Document why a dependency is needed before adding it.
 
-If a confirmed transaction fulfils a planned expense occurrence, mark that occurrence completed and do not deduct its amount twice.
-
-## Technical architecture
-
-### iOS client
-
-- Build the iOS app with **SwiftUI**.
-- Keep financial rules in an independent Swift `FinanceEngine` module, separate from views and Firebase code.
-- Use `Decimal`, `Calendar`, and explicit time-zone handling for money and date calculations. Never use binary floating-point values for currency.
-- Use a repository layer so SwiftUI views do not access Firebase directly.
-- Keep scenario calculation offline-capable and unit-testable.
-
-### Firebase services
-
-| Service | Responsibility |
-| --- | --- |
-| Firebase Authentication | Apple, Google, and authenticated account lifecycle |
-| Cloud Firestore | signed-in user model, plans, goals, transactions, decisions, comparisons, categories, tags |
-| Cloud Functions | account-deletion orchestration and server-side tasks that must not trust the client |
-| Firebase Storage | user files only when a feature genuinely needs cloud file storage |
-| Firebase Analytics | privacy-reviewed product funnel events |
-| Crashlytics | crash and non-fatal error diagnosis |
-
-Enforce `uid`-scoped Firestore security rules. A user must only read and write their own documents. Never ship production Firebase API keys, service-account credentials, or unrestricted security rules in the repository.
-
-### Primary data entities
+Recommended boundaries:
 
 ```text
-UserProfile
-FinancialPlan
-IncomeCycle
-Goal
-PlannedExpense
-FlexibleBudget
-Account
-Category
-Tag
-Transaction
-Transfer
-SpendScenario
-DecisionSnapshot
-PriceComparison
-StoreOffer
-DeferredPurchase
-SubscriptionEntitlement
+App
+Features
+  Onboarding
+  Today
+  Evaluate
+  PriceComparison
+  Plan
+  Records
+  Settings
+Core
+  FinanceEngine
+  Domain
+  DesignSystem
+Data
+  Repositories
+  LocalStore
+  CloudStore
+Services
+  Authentication
+  Subscription
+  Notifications
+  Analytics
+Tests
 ```
 
-`SpendScenario` is temporary and never changes a real budget, goal balance, or history. `DecisionSnapshot` preserves the exact inputs and rule version shown to the user. Confirmed transactions are the only source for actual-spending history.
+## 8. Persistence and synchronization rules
 
-## Analytics and success metrics
+- Keep anonymous trial data on device.
+- Ask for explicit confirmation before migrating local trial data into an account.
+- Maintain one authoritative synchronization source for signed-in financial data.
+- Do not implement simultaneous CloudKit and Firestore bidirectional synchronization.
+- Define conflict resolution, deletion propagation, retry behavior, and offline recovery before enabling cross-device sync.
+- Keep unconfirmed scenarios local even when account sync is enabled.
 
-Track only events needed to answer product questions. Do not send raw goal names, merchant names, free-text notes, or exact financial amounts to analytics.
+### Architecture decision required
 
-| AARRR stage | Question | Example events |
-| --- | --- | --- |
-| Acquisition | Where did people come from? | `install_attributed`, `waitlist_joined` |
-| Activation | Did they receive first value? | `initial_launch`, `onboarding_completed`, `first_decision_card_viewed` |
-| Retention | Do they return for decisions? | `session_started`, `screen_viewed`, `decision_evaluated` |
-| Revenue | Do they choose a plan? | `paywall_viewed`, `trial_started`, `subscription_started` |
-| Referral | Would they recommend it? | `invite_shared`, `referral_completed` |
+The current v0.2 documents do not yet establish one final cloud direction:
 
-Define activation before launch as: **a user completes onboarding and views their first Decision Card.**
+- `PRODUCT_PLAN_V0.2.md` describes SwiftData first and CloudKit later.
+- `TECH_STACK.md` proposes Firestore for signed-in synchronization.
 
-## Product validation and launch planning
+Do not start cloud synchronization implementation until the team records one decision: CloudKit, Firestore, or local-only for MVP. Update all affected documents in the same PR after the decision.
 
-Before committing the full production scope, publish a concept-validation page that explains the pre-spend decision value and collects an explicit waitlist or contact opt-in. Measure whether visitors understand the proposition and choose to leave contact information.
+## 9. Authentication, privacy, and permissions
 
-Set one public-availability deadline before scheduling release work. Plan backward from that date with explicit owners and dependencies for:
+- Keep `先試用看看` available unless the product owner explicitly changes the requirement.
+- Offer Sign in with Apple when third-party sign-in such as Google is offered on iOS.
+- Do not request notification, financial account, photo, contact, location, camera, or marketing permission during sign-in.
+- Explain a permission immediately before showing the system prompt.
+- Request notification permission only after the user enables a reminder.
+- Request photo access only when the user actively chooses a future screenshot-import feature.
+- Keep core MVP evaluation usable without bank or payment-account connections.
+- Provide privacy policy, terms, support, data export, and account deletion in Settings.
+- If accounts can be created, let users initiate deletion of the complete account and associated data from inside the App.
+- Do not use an email-only or generic form-only flow as account deletion.
+- Tell subscribed users that deleting an account does not automatically cancel an Apple-managed subscription, and provide subscription management access.
+- Keep App, website, App Store metadata, privacy labels, policies, and FAQ consistent in the same release.
 
-1. App Store review buffer and rejection-response time.
-2. Release candidate, regression testing, reviewer account, and review notes.
-3. Privacy policy, terms, support, FAQ, account deletion, and export.
-4. Subscription products, seven-day annual trial disclosure, and purchase restoration.
-5. App Store metadata, screenshots, preview media, press kit, and launch website.
-6. LicensePlist output and exact third-party license notices.
-7. Preorder and editorial-feature submission, if the product owner chooses them.
+## 10. Subscription rules
 
-Do not invent a deadline or enable preorder, submit a build, publish a release, or contact App Store editorial without explicit product-owner approval. Preorder and editorial-feature rules are time-sensitive; verify the current official Apple requirements when executing those tasks.
+Use StoreKit 2 as the source of App Store entitlement state.
 
-## Open product decisions
+Current proposed plans:
 
-Do not silently resolve these decisions in implementation:
+| Plan | Price | Trial |
+| --- | ---: | --- |
+| Annual | NT$800 per year | Seven days for eligible users |
+| Monthly | NT$120 per month | No trial by default |
 
-- Initial market and locale: Taiwan-only with TWD and Taiwan date conventions, or broader localization.
-- Primary safe-to-spend horizon: next income date only, or next income date plus calendar-month view.
-- Default essential-expense templates.
-- Whether the plan requires a named savings goal or may contain only a safety buffer.
-- Whether first-release comparison supports only a single item or also bundles and unit pricing.
-- Spending-frequency window: rolling 30 days, income cycle, or user-configurable.
+- Treat these as proposed configuration until the product owner confirms the paid feature boundary.
+- Display the localized StoreKit price rather than hard-coding display prices in production UI.
+- Before purchase, show the product value, billing period, trial eligibility, conversion price, renewal behavior, and cancellation path.
+- Support purchase restoration and entitlement refresh.
+- Do not unlock access from a local purchase-success flag alone.
+- Do not claim that every user is eligible for a free trial.
 
-Record the owner's decision in the relevant specification and tests before building behavior that depends on it.
+## 11. Analytics and diagnostics
 
-## Coding and documentation standards
+Define every event by the product question it answers. Do not add events merely because a screen or button exists.
 
-- Write all source-code comments in English.
-- Do not use emoji in source code, code comments, identifiers, release notes, or project documentation.
-- Write user-facing Traditional Chinese copy in a calm, clear, non-judgmental tone.
-- Keep View code, financial rules, persistence, and analytics separate.
-- Add unit tests whenever changing money math, dates, goal timing, budget allocation, or duplicate-deduction behavior.
-- Do not log financial content, tokens, or personal data in debug output.
+Use this Activation definition unless formally changed:
 
-## Agent responsibilities
+> The user completes initial financial setup and views the first Decision Card.
 
-### FinancialPlanningAgent
+Approved event families include:
 
-Guide onboarding, maintain assumptions, and ensure the result is useful without a full ledger.
+- Acquisition: concept-page and waitlist conversion.
+- Activation: onboarding completion and first Decision Card.
+- Retention: sessions, repeated evaluations, and plan maintenance.
+- Revenue: paywall, trial, subscription, restoration, and entitlement state.
+- Referral: voluntary sharing, recommendation intent, and rating prompts.
 
-### SpendingEvaluatorAgent
+- Do not send exact financial amounts to analytics.
+- Do not send merchant names, goal names, notes, custom tag text, email addresses, or full snapshots.
+- Use reviewed ranges, enums, and booleans instead of raw financial values.
+- Choose one primary product analytics SDK and one primary crash-reporting SDK for MVP.
+- Scrub financial and authentication data from errors, breadcrumbs, and logs.
+- Update privacy disclosures before shipping a new SDK or event payload.
 
-Use [the spending-evaluation skill](skills/evaluate-impulse-spend/SKILL.md) to generate the Decision Card from the finance model and confirmed state. Apply the classification and goal-delay rules above.
+## 12. Testing requirements
 
-### PriceComparisonAgent
+Add or update tests whenever changing money, dates, goals, allocation, persistence, or transaction confirmation.
 
-Calculate user-entered price options, flag incomparable offers, and pass a chosen offer into the decision engine.
+FinanceEngine tests must cover:
 
-### BookkeepingAgent
+- Zero, negative, fractional, and very large amounts.
+- Exact flexible-budget boundary and the smallest supported unit above it.
+- Planned-expense minimum and maximum ranges.
+- `within_flexible`, `uses_buffer`, `requires_plan_change`, and `insufficient_data`.
+- Goal unchanged, feasible recovery, explicit goal-fund use, and actual delay.
+- Month end, year end, leap day, time-zone change, and next-income-date boundaries.
+- Comparable and non-comparable price options.
+- Insufficient and sufficient frequency history.
+- Planned-expense matching without double deduction.
+- Repeated confirmation without duplicate transaction creation.
 
-Create, edit, categorize, tag, and reconcile confirmed transactions without confusing pre-spend scenarios with actual history.
+Feature and integration tests must cover:
 
-### AccountAndSubscriptionAgent
+- Guest onboarding and first Decision Card.
+- Sign-in and explicit local-data migration.
+- Offline evaluation and recovery after reconnecting.
+- Purchase, defer, skip, and adjust-plan flows.
+- Data export and account deletion entry points.
+- Subscription purchase, restore, expiry, and entitlement refresh.
+- Reduce Motion and critical accessibility paths.
 
-Handle sign-in, account migration, StoreKit entitlements, export, secure deletion, and data-control screens.
+Do not weaken a product rule to make a test pass. Fix the implementation or update the approved specification first.
 
-### AnalyticsTrackerAgent
+## 13. Git and pull request rules
 
-Track the approved AARRR events and diagnose product behavior without collecting unnecessary finance data.
+- Create a feature branch for changes unless the user explicitly requests a direct `main` update.
+- Never merge, rebase, force-push, submit, publish, or delete a branch without explicit authorization.
+- Keep commits focused and use clear imperative commit messages.
+- Do not include unrelated local files or user changes in a commit.
+- Run `git diff --check` before committing.
+- Run relevant tests and report what was not run.
+- Use a pull request to expose product decisions, architecture conflicts, migrations, privacy changes, and release risk.
+- Require review before merging changes to financial rules, authentication, synchronization, subscriptions, privacy, analytics, or release automation.
+- Prefer Squash and merge after required approvals and blocking comments are resolved.
 
-### ReleaseManagementAgent
+## 14. Release rules
 
-Run [the PayReview release-check skill](skills/payreview-release-check/SKILL.md) before every TestFlight or App Store release. Report every item as `pass`, `block`, or `not applicable`; do not silently assume a requirement is done.
+Use [skills/payreview-release-check/SKILL.md](skills/payreview-release-check/SKILL.md) before TestFlight external testing, App Store submission, preorder activation, or production release.
 
-## Success criteria
+- Report each release item as `pass`, `block`, or `not applicable`.
+- Set the release decision to `NO-GO` when financial integrity, privacy, account deletion, security, subscription disclosure, review access, or a critical crash is blocked.
+- Provide a working review account with representative test data when full functionality requires login, or an approved full-feature demo mode.
+- Keep support, privacy policy, terms, FAQ, and account-deletion URLs live before submission.
+- Generate and review third-party notices after dependency changes.
+- Preserve required license and copyright text, including complete MIT notices.
+- Treat preorder and App Store featuring as optional launch tactics, not guaranteed ranking or exposure.
+- Require explicit product-owner approval before uploading a build, submitting for review, enabling preorder, nominating for featuring, or releasing publicly.
+- Verify current official Apple requirements at execution time because App Store rules change.
 
-The product succeeds when a user can set up a small plan quickly, understand a potential purchase before paying, compare a real entered offer, and make an informed choice without feeling judged.
+## 15. Agent workflow
+
+For every implementation task:
+
+1. Read the relevant source documents and nearby code before editing.
+2. Identify whether the task depends on an unresolved product or architecture decision.
+3. State assumptions when they affect behavior, data, privacy, or scope.
+4. Make the smallest coherent change that satisfies the approved requirement.
+5. Keep calculation, UI, persistence, and analytics responsibilities separated.
+6. Add or update tests proportional to risk.
+7. Run formatting, static checks, tests, and `git diff --check` when available.
+8. Review the final diff for unrelated files, secrets, financial data, and accidental behavior changes.
+9. Report the outcome, files changed, verification performed, and any remaining decision or risk.
+
+Stop and ask for direction when a missing decision would materially change financial behavior, cloud architecture, paid access, collected data, account deletion, or release scope.
+
+## 16. Specialized skills
+
+- Use [skills/evaluate-impulse-spend/SKILL.md](skills/evaluate-impulse-spend/SKILL.md) for implementing, testing, or reviewing pre-spend evaluation and Decision Cards.
+- Use [skills/payreview-release-check/SKILL.md](skills/payreview-release-check/SKILL.md) for TestFlight and App Store release readiness.
+
+These Skills provide workflows. They do not override this file or the approved product documents.
