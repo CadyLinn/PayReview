@@ -22,7 +22,7 @@ Build PayReview as a pre-spend personal finance decision product, not merely a b
 The product must help the user understand before payment:
 
 1. What changes if this purchase happens now.
-2. Whether similar confirmed purchases have happened frequently.
+2. Whether the purchase changes the time remaining or expected completion date of a protected goal.
 3. What recovery action can preserve the budget or goal.
 
 Use the product promise:
@@ -54,7 +54,8 @@ Never shame the user, celebrate spending, block a purchase, or present the produ
 
 - Ask for the amount first. Keep category optional for quick evaluation.
 - Show a clear conclusion before detailed cards.
-- Answer budget, frequency, and goal impact when data is available.
+- Answer budget and goal impact when data is available.
+- When a purchase exceeds the conservative spendable amount, show a clear `超出預算` warning and the calculated goal delay in days when the no-recovery scenario changes the goal date.
 - State that data is insufficient when a reliable result cannot be calculated.
 - Offer `購買並記錄`, `晚點決定`, `略過`, and `調整計畫` after evaluation.
 
@@ -96,18 +97,13 @@ Do not automatically label a purchase as impulsive because it exceeds the flexib
 
 ### Goal impact
 
+- Require a target completion date for each savings goal and show the localized target date plus the calculated time remaining.
 - Keep the goal date unchanged when `classified_spendable_before` covers the purchase.
 - Show a recovery amount when future discretionary spending can preserve the goal.
-- Calculate use of goal funds only after the user actively selects that scenario.
-- Show a delayed goal date only when the user uses protected goal funds or the minimum savings pace can no longer reach the target date.
+- For `requires_plan_change`, calculate the no-recovery projection and show the delayed target date and delay in whole days when the purchase would make the current minimum savings pace miss the target date.
+- Label a delayed date as a scenario projection, not a confirmed plan change.
+- Recalculate the goal-fund scenario when the user actively selects it.
 - Never mutate a goal contribution or target date without explicit confirmation.
-
-### Spending frequency
-
-- Count only confirmed expense transactions in the configured category and time window.
-- Exclude transfers, evaluations, deferred purchases, skipped decisions, reversed transactions, and deleted transactions.
-- Show `資料不足，尚未計算頻率。` when the category or history is insufficient.
-- Do not hard-code a rolling window until the product owner confirms whether to use 30 days, the income cycle, or a user-configurable period.
 
 ## 6. Scenario and transaction integrity
 
@@ -244,9 +240,9 @@ FinanceEngine tests must cover:
 - Exact flexible-budget boundary and the smallest supported unit above it.
 - Planned-expense minimum and maximum ranges.
 - `within_flexible`, `uses_buffer`, `requires_plan_change`, and `insufficient_data`.
-- Goal unchanged, feasible recovery, explicit goal-fund use, and actual delay.
+- Required goal completion date, localized time remaining, goal unchanged, feasible recovery, explicit goal-fund use, and projected delay in days.
+- An NT$1,000 over-budget scenario that warns the user and shows the calculated delayed goal date when the no-recovery projection misses the target.
 - Month end, year end, leap day, time-zone change, and next-income-date boundaries.
-- Insufficient and sufficient frequency history.
 - Planned-expense matching without double deduction.
 - Repeated confirmation without duplicate transaction creation.
 

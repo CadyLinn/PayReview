@@ -48,21 +48,17 @@ Keep the protected goal contribution unchanged. Calculate the exact discretionar
 
 ### Use goal funds
 
-Calculate this only after the user actively selects the scenario. Recalculate the savings pace from the reduced goal balance or contribution. Show a delay only when the target date actually changes.
+Recalculate the savings pace from the reduced goal balance or contribution when the user selects this scenario. Show the projected completion date and whole-day delay when the target date changes.
 
-Never state that every unplanned expense delays a goal. If `classifiedSpendableBefore` covers the purchase, the goal remains unchanged.
+### Purchase without recovery
 
-## Frequency
+For `requires_plan_change`, calculate a baseline projection that assumes the purchase happens now and no future discretionary spending is reduced. If the current minimum savings pace can no longer reach the target date, return the projected completion date and the difference from the original target in whole calendar days.
 
-Count only confirmed expense transactions in the configured window and category. Exclude transfers, scenarios, deferred purchases, skipped decisions, and deleted or reversed transactions.
+Present this as a scenario projection. Never mutate the saved target date or contribution during evaluation. If `classifiedSpendableBefore` covers the purchase, the goal remains unchanged.
 
-If the category is absent or the history does not meet the product's configured sufficiency threshold, return:
+## Goal timing
 
-```text
-資料不足，尚未計算頻率。
-```
-
-The rolling-window choice remains a product configuration. Do not hard-code 30 days until the owner resolves that decision.
+Every savings goal requires a target date. Return the localized target date and the calendar time remaining at evaluation time. Use `Calendar` with the snapshot time zone for both time remaining and delay-day calculations. If the target date or savings pace is missing or stale, return `insufficient_data` instead of inventing a delay.
 
 ## Output contract
 
@@ -75,8 +71,11 @@ DecisionCard
   classified_spendable_before: money
   classified_spendable_after: money
   safe_to_spend_range: money range
-  frequency_insight: count and window | insufficient data
-  goal_effect: unchanged | needs_recovery | delayed_by_user_choice
+  goal_target_date: date
+  goal_time_remaining: calendar duration
+  goal_effect: unchanged | needs_recovery | projected_delay
+  projected_goal_date: date | none
+  projected_delay_days: whole number | none
   recovery_options: zero or more explicit actions
   assumptions: values, dates, freshness, and uncertainty
   rule_version: identifier
@@ -86,3 +85,5 @@ DecisionCard
 ## Example
 
 Given `flexibleBefore = NT$680`, `safeToSpendLow = NT$680`, and `proposedAmount = NT$600`, return `within_flexible` with `flexibleAfter = NT$80`. If `safeToSpendLow` is only NT$500, classify the same purchase as `requires_plan_change` unless a separate, explicitly approved buffer covers the NT$100 shortfall. If protected goal contributions remain fully reserved, return `goal_effect = unchanged`. A valid optional recovery explanation is that preserving the original NT$680 of flexibility would require reducing other discretionary spending by NT$600 over a stated period; do not confuse that preference with a required goal recovery.
+
+For an NT$1,000 purchase that exceeds the conservative spendable amount, return a calm `超出預算` warning. If the no-recovery projection moves a 2027-06-01 target to 2027-06-13, return `projected_delay_days = 12`, show both dates, and offer the calculated recovery amount needed to preserve 2027-06-01.

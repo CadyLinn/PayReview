@@ -27,7 +27,8 @@ If an input is missing, mark it `block` or `not applicable`. Do not infer a date
 - Confirm the onboarding flow completes in two to four minutes with a goal, income cycle, planned expenses, and flexible budget.
 - Confirm a `SpendScenario` does not change budgets or records before the user confirms a purchase.
 - Test `within_flexible`, `uses_buffer`, `requires_plan_change`, and `insufficient_data`, including a flexible allocation above the conservative safe-to-spend bound.
-- Confirm goal delay appears only after goal-reserve use or an infeasible recovery plan.
+- Confirm every goal has a target date and localized time remaining. For `requires_plan_change`, verify the no-recovery projection shows the calculated delayed date and whole-day delay without mutating the saved goal.
+- Verify an NT$1,000 over-budget evaluation shows a calm warning, the original and projected goal dates when delayed, and a recovery option that preserves the original date.
 - Confirm a transaction that fulfils a planned expense is not deducted twice.
 - Verify income, expense, transfer, categories, date, note, and tags in daily bookkeeping.
 
