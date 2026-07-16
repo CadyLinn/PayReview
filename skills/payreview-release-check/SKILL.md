@@ -1,6 +1,6 @@
 ---
 name: payreview-release-check
-description: Run the release-readiness process for 花算 PayReview before a TestFlight build, App Store submission, preorder, or production release. Use when preparing a version, auditing store requirements, checking subscriptions and privacy disclosures, validating support and legal links, or producing a go/no-go release report.
+description: Run the release-readiness process for PayReview before a TestFlight build, App Store submission, preorder, or production release. Use when preparing a version, auditing store requirements, checking subscriptions and privacy disclosures, validating support and legal links, or producing a go/no-go release report.
 ---
 
 # PayReview Release Check

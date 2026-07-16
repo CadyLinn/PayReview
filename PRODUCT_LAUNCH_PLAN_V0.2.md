@@ -1,4 +1,4 @@
-# 花算 PayReview 新手體驗與上市規劃
+# PayReview 新手體驗與上市規劃
 
 規劃版本：v0.2
 
@@ -72,7 +72,7 @@ PayReview 的 Activation 定義為：
 
 標題：輸入金額，先看這筆消費會改變什麼。
 
-說明：PayReview 會顯示預算剩餘、近期消費頻率、目標影響與可以採取的調整方式。
+說明：PayReview 會顯示預算剩餘、目標影響與可以採取的調整方式。
 
 #### 畫面三：試算不等於已經花錢
 
@@ -110,6 +110,10 @@ PayReview 的 Activation 定義為：
 ## 三、首次財務設定
 
 整個流程控制在 2 至 4 分鐘。重點是先得到可用答案，而不是建立完整帳本。
+
+SwiftUI 實作以 [PayReview v2 Figma Prototype](https://www.figma.com/design/XtdsfXhoOOPbBdrvvt1AZT/PayReview?node-id=66-5) 的核准流程為基準。使用者點擊 `用這個目標建立計畫` 後，必須完成 `C Setup Income → D Setup Expenses → E Setup Budget → F Setup Complete`，再由 `建立我的自訂目標計畫` 進入 `A5 Building Plan · 自訂目標`。
+
+四個設定階段必須共享清楚的進度資訊，但使用不同互動形式。每頁提供返回或修改入口，純圖示按鈕至少 44 × 44 pt，文案保持簡短、包容且不以句號堆疊畫面。完成煙火只用於完成設定，不用於消費或記帳確認。
 
 ### 第一步：一個重要目標
 
@@ -171,6 +175,8 @@ PayReview 的 Activation 定義為：
 
 > 你的計畫準備好了。下次收入日前，扣除預期支出與目標後，約有 NT$680 可自由安排。
 
+完成頁摘要自訂目標、固定支出項目數與彈性預算，主要行動導向 `A5 Building Plan · 自訂目標`。A5 完成計算後才顯示第一筆消費試算入口。
+
 ## 四、消費前評估
 
 ### 輸入畫面
@@ -198,6 +204,10 @@ PayReview 的 Activation 定義為：
 1. 從彈性預算支付：顯示剩餘額度與安心可花範圍。
 2. 保護目標日期：顯示需要從其他地方減少多少消費。
 3. 動用目標基金：只有使用者主動選擇時，才顯示目標可能延後多久。
+
+### Prototype 方案 A 驗收路徑
+
+`C2 Compare Real Cost → B1 NT$960／購物 → B2 超出 NT$280 → D4a NT$960／購物 → D5a NT$960` 必須保持金額與類別一致。返回與重新輸入要回到同一個方案狀態，不得跳回 NT$1,000 的一般評估 fixture。正式 App 中的金額由計算引擎產生，Prototype 數字只用於 UI 與整合測試。
 
 ## 五、日常記帳
 

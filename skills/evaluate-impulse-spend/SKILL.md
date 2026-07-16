@@ -1,6 +1,6 @@
 ---
 name: evaluate-impulse-spend
-description: Evaluate a proposed or unplanned purchase for 花算 PayReview before it becomes a transaction. Use when implementing, testing, reviewing, or explaining quick spend evaluation, impulse-spend reminders, opportunity cost, safe-to-spend amounts, spending frequency, savings-goal effects, recovery options, Decision Cards, or purchase/defer/skip flows.
+description: Evaluate a proposed or unplanned purchase for PayReview before it becomes a transaction. Use when implementing, testing, reviewing, or explaining quick spend evaluation, opportunity cost, safe-to-spend amounts, savings-goal effects, recovery options, Decision Cards, or purchase/defer/skip flows.
 ---
 
 # Evaluate Impulse Spend
@@ -20,7 +20,6 @@ Gather the minimum available data:
 - Flexible-budget period, allocation, and confirmed spending.
 - Essential planned expenses remaining before the next income date.
 - Protected goal contributions and explicitly available safety buffer.
-- Confirmed same-category transactions for the configured frequency window.
 - Data freshness, uncertain amounts, and rule version.
 
 Do not require a category for quick evaluation. If required financial data is missing, return `insufficient_data` with the missing fields instead of estimating silently.
@@ -33,18 +32,17 @@ Do not require a category for quick evaluation. If required financial data is mi
 4. Calculate a conservative safe-to-spend range from uncertain planned amounts.
 5. Cap the classifiable spendable amount at the lower of remaining flexible allocation and the conservative safe-to-spend bound.
 6. Return `insufficient_data` when required inputs are missing, stale, or inconsistent; otherwise classify the result as `within_flexible`, `uses_buffer`, or `requires_plan_change`.
-7. Calculate category frequency only from confirmed transactions. State when history is insufficient.
-8. Evaluate the three scenarios: pay from flexible budget, protect the goal date, and optionally use goal funds.
-9. Produce practical recovery options without changing the plan automatically.
-10. Preserve all inputs, assumptions, data freshness, and the calculation-rule version in a `DecisionSnapshot`.
+7. Evaluate the three scenarios: pay from flexible budget, protect the goal date, and optionally use goal funds.
+8. Produce practical recovery options without changing the plan automatically.
+9. Preserve all inputs, assumptions, data freshness, and the calculation-rule version in a `DecisionSnapshot`.
 
 ## Write the Decision Card
 
 Lead with one calm conclusion. Then answer:
 
 1. Budget impact: before and after amounts for the relevant periods.
-2. Frequency: confirmed occurrence count or an insufficient-data statement.
-3. Goal impact: unchanged, recovery needed, or delayed only under the allowed rule.
+2. Goal impact: unchanged, recovery needed, or delayed only under the allowed rule.
+3. Recovery: a concrete adjustment or a later purchase option when applicable.
 
 Include at least one recovery option when the purchase reduces protected flexibility. Examples include reducing future discretionary spending by a stated amount, moving the purchase to a later income period, or explicitly changing the plan.
 
@@ -76,7 +74,6 @@ Test at minimum:
 - Minimum and maximum planned-expense ranges.
 - A flexible allocation above the conservative safe-to-spend bound without an affordability overstatement.
 - Goal unchanged, feasible recovery, explicit goal-fund use, and unavoidable delay.
-- Insufficient history and multiple confirmed transactions in the frequency window.
 - Month end, leap day, daylight-saving change, and next-income-date boundary.
 - A planned expense matched to a transaction without double deduction.
 - Scenario evaluation without persistent budget mutation.

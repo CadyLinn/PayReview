@@ -52,18 +52,6 @@ Calculate this only after the user actively selects the scenario. Recalculate th
 
 Never state that every unplanned expense delays a goal. If `classifiedSpendableBefore` covers the purchase, the goal remains unchanged.
 
-## Frequency
-
-Count only confirmed expense transactions in the configured window and category. Exclude transfers, scenarios, deferred purchases, skipped decisions, and deleted or reversed transactions.
-
-If the category is absent or the history does not meet the product's configured sufficiency threshold, return:
-
-```text
-資料不足，尚未計算頻率。
-```
-
-The rolling-window choice remains a product configuration. Do not hard-code 30 days until the owner resolves that decision.
-
 ## Output contract
 
 ```text
@@ -75,7 +63,6 @@ DecisionCard
   classified_spendable_before: money
   classified_spendable_after: money
   safe_to_spend_range: money range
-  frequency_insight: count and window | insufficient data
   goal_effect: unchanged | needs_recovery | delayed_by_user_choice
   recovery_options: zero or more explicit actions
   assumptions: values, dates, freshness, and uncertainty
