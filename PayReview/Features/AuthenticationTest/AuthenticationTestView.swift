@@ -12,7 +12,7 @@ struct AuthenticationTestView: View {
                     signInView
                 }
             }
-            .navigationTitle("登入測試")
+            .navigationTitle("PayReview")
             .navigationBarTitleDisplayMode(.inline)
         }
         .task {
@@ -96,6 +96,11 @@ struct AuthenticationTestView: View {
             if viewModel.isPreparingAccount {
                 ProgressView("正在確認帳號狀態")
             } else if viewModel.isAccountReady {
+                NavigationLink("開始建立計畫") {
+                    SetupFlowView()
+                }
+                .buttonStyle(.borderedProminent)
+
                 NavigationLink("查看資料測試") {
                     FirestoreTestView()
                 }
