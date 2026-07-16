@@ -1,1 +1,5 @@
 .DS_Store
+DerivedData/
+firebase-debug*.log
+functions/lib/
+functions/node_modules/
