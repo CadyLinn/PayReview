@@ -2,8 +2,10 @@ import SwiftUI
 
 struct BuildingPlanView: View {
     @ObservedObject var store: SetupStore
+    let completion: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isCalculating = false
+    @State private var isReady = false
 
     var body: some View {
         ZStack {
@@ -53,10 +55,16 @@ struct BuildingPlanView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(PayReviewTheme.darkRaised, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
 
-                Text("計畫建立完成後，會從第一筆消費試算開始")
-                    .font(.footnote)
-                    .foregroundStyle(PayReviewTheme.safe.opacity(0.9))
-                    .multilineTextAlignment(.center)
+                if isReady {
+                    Button("查看完整功能", action: completion)
+                        .buttonStyle(PayReviewPrimaryButtonStyle())
+                        .transition(.opacity.combined(with: .scale))
+                } else {
+                    Text("計畫建立完成後，會從第一筆消費試算開始")
+                        .font(.footnote)
+                        .foregroundStyle(PayReviewTheme.safe.opacity(0.9))
+                        .multilineTextAlignment(.center)
+                }
             }
             .padding()
         }
@@ -65,6 +73,12 @@ struct BuildingPlanView: View {
             guard !reduceMotion else { return }
             withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
                 isCalculating = true
+            }
+            Task {
+                try? await Task.sleep(for: .seconds(1.4))
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                    isReady = true
+                }
             }
         }
     }

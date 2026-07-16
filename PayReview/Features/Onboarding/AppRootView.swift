@@ -2,7 +2,10 @@ import SwiftUI
 
 struct AppRootView: View {
     @StateObject private var authentication = AuthenticationTestViewModel()
+    @StateObject private var setupStore = SetupStore()
     @AppStorage("hasSeenPayReviewIntroduction") private var hasSeenIntroduction = false
+    @AppStorage("hasCompletedPayReviewPersonalization") private var hasCompletedPersonalization = false
+    @AppStorage("hasCompletedPayReviewSetup") private var hasCompletedSetup = false
 
     var body: some View {
         Group {
@@ -10,7 +13,7 @@ struct AppRootView: View {
                 LaunchView()
             } else if authentication.authenticatedUser == nil {
                 if hasSeenIntroduction {
-                    PayReviewSignInView(viewModel: authentication)
+                    UnauthenticatedActivationView(viewModel: authentication)
                 } else {
                     OnboardingFlowView {
                         hasSeenIntroduction = true
@@ -19,7 +22,17 @@ struct AppRootView: View {
             } else if authentication.isPreparingAccount {
                 AccountPreparationView()
             } else if authentication.isAccountReady {
-                SetupFlowView()
+                if !hasCompletedPersonalization {
+                    PersonalizedActivationView(store: setupStore) {
+                        hasCompletedPersonalization = true
+                    }
+                } else if !hasCompletedSetup {
+                    SetupFlowView(store: setupStore) {
+                        hasCompletedSetup = true
+                    }
+                } else {
+                    TrialEligibilityView()
+                }
             } else {
                 AccountRecoveryView(viewModel: authentication)
             }

@@ -9,8 +9,14 @@ enum SetupRoute: Hashable {
 }
 
 struct SetupFlowView: View {
-    @StateObject private var store = SetupStore()
+    @StateObject private var store: SetupStore
     @State private var path: [SetupRoute] = []
+    let completion: () -> Void
+
+    init(store: SetupStore, completion: @escaping () -> Void = {}) {
+        _store = StateObject(wrappedValue: store)
+        self.completion = completion
+    }
 
     var body: some View {
         // Uses native SwiftUI NavigationStack so system spacing, back behavior,
@@ -38,7 +44,7 @@ struct SetupFlowView: View {
                         path.append(.buildingPlan)
                     }
                 case .buildingPlan:
-                    BuildingPlanView(store: store)
+                    BuildingPlanView(store: store, completion: completion)
                 }
             }
         }
@@ -47,5 +53,5 @@ struct SetupFlowView: View {
 }
 
 #Preview {
-    SetupFlowView()
+    SetupFlowView(store: SetupStore())
 }
