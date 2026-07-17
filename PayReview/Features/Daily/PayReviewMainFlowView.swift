@@ -579,20 +579,70 @@ private struct WeeklyStoryView: View {
 
 private struct PlanPrototypeView: View {
     @ObservedObject var setupStore: SetupStore
+
     var body: some View {
         NavigationStack {
-            List {
-                Section { Text("以下是目前計算安心可花額度與目標影響的假設").foregroundStyle(.secondary) }
-                Section("目前計算假設") {
-                    LabeledContent("收入週期", value: setupStore.incomeCadence.rawValue)
-                    LabeledContent("必要支出", value: setupStore.plannedExpenseTotal.twdFormatted)
-                    LabeledContent("彈性預算", value: setupStore.flexibleBudget.twdFormatted)
-                    LabeledContent("安全緩衝", value: "已保留")
-                    LabeledContent("目標", value: setupStore.goalName)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("計畫").font(.largeTitle.bold())
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("目前守住的目標")
+                            .font(.subheadline.weight(.semibold))
+                        Text(setupStore.goalName)
+                            .font(.system(size: 32, weight: .bold, design: .rounded))
+                        Text("目標金額 \(setupStore.goalAmount.twdFormatted) · \(setupStore.targetDate.formatted(date: .abbreviated, time: .omitted))")
+                            .font(.footnote)
+                    }
+                    .foregroundStyle(PayReviewTheme.surface)
+                    .padding(20)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(PayReviewTheme.primary, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text("目前計算假設").font(.title3.bold())
+                        assumptionRow("calendar", "收入週期", setupStore.incomeCadence.rawValue)
+                        Divider().padding(.leading, 52)
+                        assumptionRow("checklist", "必要支出", setupStore.plannedExpenseTotal.twdFormatted)
+                        Divider().padding(.leading, 52)
+                        assumptionRow("slider.horizontal.3", "彈性預算", setupStore.flexibleBudget.twdFormatted)
+                        Divider().padding(.leading, 52)
+                        assumptionRow("shield", "安全緩衝", "已保留")
+                    }
+                    .padding(18)
+                    .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+
+                    NavigationLink {
+                        PlanAssumptionsEditorView(store: setupStore)
+                    } label: {
+                        HStack {
+                            Text("更新計畫")
+                            Spacer()
+                            Image(systemName: "arrow.clockwise")
+                        }
+                    }
+                    .buttonStyle(PayReviewPrimaryButtonStyle())
                 }
-                Section { NavigationLink("檢視並調整計畫") { PlanAssumptionsEditorView(store: setupStore) } }
+                .padding(24)
             }
-            .navigationTitle("計畫")
+            .background(PayReviewTheme.background.ignoresSafeArea())
+        }
+    }
+
+    private func assumptionRow(_ icon: String, _ title: String, _ value: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(PayReviewTheme.primary)
+                .frame(width: 40, height: 40)
+                .background(PayReviewTheme.subtle, in: Circle())
+
+            Text(title).font(.subheadline.weight(.semibold))
+            Spacer()
+            Text(value)
+                .font(.subheadline)
+                .foregroundStyle(PayReviewTheme.secondaryText)
+                .multilineTextAlignment(.trailing)
         }
     }
 }
