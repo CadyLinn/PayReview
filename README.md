@@ -4,13 +4,13 @@
 
 ### 中文
 
-PayReview 是一款付款前的個人財務決策工具，協助使用者在消費發生前理解實際價格、預算變化與目標影響，並提供可以維持原有計畫的調整方案。PayReview 不替使用者決定是否購買，而是讓每一次選擇都有清楚、可計算的依據。
+付款前看懂價格、預算與目標影響，找到維持計畫的調整方案。
 
 > 花錢前，先算價格與影響。
 
 ### English
 
-PayReview is a pre-spend personal finance decision tool that helps people understand a purchase's real cost, budget impact, and effect on financial goals before they pay. It also offers practical recovery options for staying on track. PayReview does not decide whether someone should buy; it provides clear, calculated information so every decision can be made with confidence.
+See cost, budget, and goal impact before paying.
 
 > Before you spend, understand the price and its impact.
 
