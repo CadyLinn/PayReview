@@ -1,5 +1,4 @@
 import Combine
-import AuthenticationServices
 import FirebaseAuth
 import Foundation
 
@@ -11,6 +10,7 @@ final class AuthenticationTestViewModel: ObservableObject {
     @Published private(set) var isWorking = false
     @Published private(set) var isPreparingAccount = false
     @Published private(set) var isAccountReady = false
+    @Published private(set) var hasFinancialPlan = false
     @Published private(set) var hasResolvedAuthentication = false
 
     private let authenticationService: AuthenticationServicing
@@ -43,6 +43,7 @@ final class AuthenticationTestViewModel: ObservableObject {
             Task { @MainActor in
                 self?.authenticatedUser = user
                 self?.isAccountReady = false
+                self?.hasFinancialPlan = false
                 self?.hasResolvedAuthentication = true
 
                 if user != nil {
@@ -58,17 +59,15 @@ final class AuthenticationTestViewModel: ObservableObject {
         })
     }
 
-    func configureAppleRequest(_ request: ASAuthorizationAppleIDRequest) {
-        do {
-            try authenticationService.configureAppleRequest(request)
-        } catch {
-            errorMessage = error.localizedDescription
+    func createAccount(email: String, password: String) async {
+        await perform { [authenticationService] in
+            try await authenticationService.createAccount(email: email, password: password)
         }
     }
 
-    func completeAppleSignIn(_ result: Result<ASAuthorization, Error>) async {
-        await perform {
-            try await self.authenticationService.completeAppleSignIn(result)
+    func signIn(email: String, password: String) async {
+        await perform { [authenticationService] in
+            try await authenticationService.signIn(email: email, password: password)
         }
     }
 
@@ -76,6 +75,7 @@ final class AuthenticationTestViewModel: ObservableObject {
         do {
             try authenticationService.signOut()
             isAccountReady = false
+            hasFinancialPlan = false
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -89,7 +89,8 @@ final class AuthenticationTestViewModel: ObservableObject {
         defer { isPreparingAccount = false }
 
         do {
-            try await accountStateService.ensureActiveAccountState()
+            let preparation = try await accountStateService.prepareActiveAccount()
+            hasFinancialPlan = preparation.hasFinancialPlan
             isAccountReady = true
         } catch {
             isAccountReady = false

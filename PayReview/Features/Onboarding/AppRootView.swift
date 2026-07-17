@@ -4,8 +4,8 @@ struct AppRootView: View {
     @StateObject private var authentication = AuthenticationTestViewModel()
     @StateObject private var setupStore = SetupStore()
     @AppStorage("hasSeenPayReviewIntroduction") private var hasSeenIntroduction = false
-    @AppStorage("hasCompletedPayReviewPersonalization") private var hasCompletedPersonalization = false
-    @AppStorage("hasCompletedPayReviewSetup") private var hasCompletedSetup = false
+    @State private var hasCompletedPersonalization = false
+    @State private var hasCompletedSetup = false
     @State private var introductionStartsAtFinalPage = false
     @State private var startsAtSignIn = false
 
@@ -46,7 +46,9 @@ struct AppRootView: View {
             } else if authentication.isPreparingAccount {
                 AccountPreparationView()
             } else if authentication.isAccountReady {
-                if !hasCompletedPersonalization {
+                if authentication.hasFinancialPlan || hasCompletedSetup {
+                    PayReviewMainFlowView(setupStore: setupStore, authentication: authentication)
+                } else if !hasCompletedPersonalization {
                     PersonalizedActivationView(
                         store: setupStore,
                         backToSignIn: {
@@ -55,14 +57,14 @@ struct AppRootView: View {
                         },
                         completion: {
                             hasCompletedPersonalization = true
+                            saveUserScopedProgress()
                         }
                     )
                 } else if !hasCompletedSetup {
                     SetupFlowView(store: setupStore) {
                         hasCompletedSetup = true
+                        saveUserScopedProgress()
                     }
-                } else {
-                    PayReviewMainFlowView(setupStore: setupStore)
                 }
             } else {
                 AccountRecoveryView(viewModel: authentication)
@@ -71,6 +73,9 @@ struct AppRootView: View {
         .task {
             authentication.startObserving()
         }
+        .onChange(of: authentication.authenticatedUser?.id) { _, _ in
+            loadUserScopedProgress()
+        }
         .alert("登入問題", isPresented: errorBinding) {
             Button("好", role: .cancel) {
                 authentication.errorMessage = nil
@@ -78,6 +83,32 @@ struct AppRootView: View {
         } message: {
             Text(authentication.errorMessage ?? "")
         }
+    }
+
+    private func loadUserScopedProgress() {
+        guard let userID = authentication.authenticatedUser?.id else {
+            hasCompletedPersonalization = false
+            hasCompletedSetup = false
+            return
+        }
+        hasCompletedPersonalization = UserDefaults.standard.bool(
+            forKey: "payReview.\(userID).hasCompletedPersonalization"
+        )
+        hasCompletedSetup = UserDefaults.standard.bool(
+            forKey: "payReview.\(userID).hasCompletedSetup"
+        )
+    }
+
+    private func saveUserScopedProgress() {
+        guard let userID = authentication.authenticatedUser?.id else { return }
+        UserDefaults.standard.set(
+            hasCompletedPersonalization,
+            forKey: "payReview.\(userID).hasCompletedPersonalization"
+        )
+        UserDefaults.standard.set(
+            hasCompletedSetup,
+            forKey: "payReview.\(userID).hasCompletedSetup"
+        )
     }
 
     private var errorBinding: Binding<Bool> {

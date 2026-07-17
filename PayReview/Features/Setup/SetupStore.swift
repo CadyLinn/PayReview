@@ -73,3 +73,11 @@ extension Decimal {
         return formatter.string(from: NSDecimalNumber(decimal: self)) ?? "NT$0"
     }
 }
+
+extension FormatStyle where Self == Decimal.FormatStyle.Currency {
+    static var payReviewTWD: Decimal.FormatStyle.Currency {
+        .currency(code: "TWD")
+            .locale(Locale(identifier: "en_US"))
+            .precision(.fractionLength(0))
+    }
+}

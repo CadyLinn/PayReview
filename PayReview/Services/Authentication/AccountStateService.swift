@@ -2,7 +2,11 @@ import FirebaseFunctions
 import Foundation
 
 protocol AccountStateServicing {
-    func ensureActiveAccountState() async throws
+    func prepareActiveAccount() async throws -> AccountPreparation
+}
+
+struct AccountPreparation: Equatable, Sendable {
+    let hasFinancialPlan: Bool
 }
 
 enum AccountStateServiceError: LocalizedError {
@@ -20,7 +24,7 @@ enum AccountStateServiceError: LocalizedError {
 }
 
 struct AccountStateService: AccountStateServicing {
-    func ensureActiveAccountState() async throws {
+    func prepareActiveAccount() async throws -> AccountPreparation {
         let functions = Functions.functions(region: "asia-east1")
         let result = try await functions.httpsCallable("ensureAccountState").call()
 
@@ -32,5 +36,9 @@ struct AccountStateService: AccountStateServicing {
         guard status == "active" else {
             throw AccountStateServiceError.inactiveAccount
         }
+
+        return AccountPreparation(
+            hasFinancialPlan: payload["hasFinancialPlan"] as? Bool ?? false
+        )
     }
 }

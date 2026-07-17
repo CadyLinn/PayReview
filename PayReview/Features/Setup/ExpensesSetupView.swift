@@ -78,7 +78,10 @@ private struct AddPlannedExpenseView: View {
                 Section("支出內容") {
                     TextField("名稱", text: $name)
                     TextField("金額", text: $amountText)
-                        .keyboardType(.decimalPad)
+                        .keyboardType(.numberPad)
+                        .onChange(of: amountText) { _, newValue in
+                            amountText = newValue.filter(\.isNumber)
+                        }
                     Toggle("必要支出", isOn: $isEssential)
                 }
             }

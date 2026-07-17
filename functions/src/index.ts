@@ -41,6 +41,11 @@ export const ensureAccountState = onCall(
       );
     });
 
-    return { status };
+    const financialPlans = await db
+      .collection(`users/${userID}/financialPlans`)
+      .limit(1)
+      .get();
+
+    return { status, hasFinancialPlan: !financialPlans.empty };
   }
 );
