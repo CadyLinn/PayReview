@@ -4,13 +4,13 @@
 
 ### 中文
 
-付款前看懂價格、預算與目標影響，找到維持計畫的調整方案。
+PayReview 在付款前呈現消費的實際價格、預算與目標影響，並提供可行的調整方案，幫助你清楚選擇、不偏離原有財務計畫。
 
 > 花錢前，先算價格與影響。
 
 ### English
 
-See cost, budget, and goal impact before paying.
+See each purchase's real cost, budget and goal impact, with practical ways to stay on track.
 
 > Before you spend, understand the price and its impact.
 
