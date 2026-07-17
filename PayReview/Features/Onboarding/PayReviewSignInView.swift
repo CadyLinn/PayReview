@@ -1,4 +1,3 @@
-import AuthenticationServices
 import SwiftUI
 
 struct PayReviewSignInView: View {
@@ -58,18 +57,6 @@ struct PayReviewSignInView: View {
                 .position(x: 196.5, y: 383)
                 .payReviewSlideReveal(isActive: isPresented, edge: .leading, delay: 0.40)
 
-                SignInWithAppleButton(.signIn) { request in
-                    viewModel.configureAppleRequest(request)
-                } onCompletion: { result in
-                    Task { await viewModel.completeAppleSignIn(result) }
-                }
-                .signInWithAppleButtonStyle(.black)
-                .frame(width: 345, height: 48)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .disabled(viewModel.isWorking)
-                .position(x: 196.5, y: 544)
-                .payReviewSlideReveal(isActive: isPresented, edge: .leading, delay: 0.48, distance: 110)
-
                 Button {
                     Task { await viewModel.signInWithGoogle() }
                 } label: {
@@ -84,15 +71,15 @@ struct PayReviewSignInView: View {
                         .stroke(Color(red: 203 / 255, green: 221 / 255, blue: 211 / 255), lineWidth: 1)
                 }
                 .disabled(viewModel.isWorking)
-                .position(x: 196.5, y: 606)
-                .payReviewSlideReveal(isActive: isPresented, edge: .trailing, delay: 0.56, distance: 110)
+                .position(x: 196.5, y: 544)
+                .payReviewSlideReveal(isActive: isPresented, edge: .trailing, delay: 0.48, distance: 110)
 
                 Text("隱私權政策　·　使用條款　·　登入問題")
                     .font(.system(size: 13))
                     .foregroundStyle(PayReviewTheme.secondaryText)
                     .frame(width: 345)
-                    .position(x: 196.5, y: 678)
-                    .payReviewSlideReveal(isActive: isPresented, edge: .bottom, delay: 0.62, distance: 24)
+                    .position(x: 196.5, y: 616)
+                    .payReviewSlideReveal(isActive: isPresented, edge: .bottom, delay: 0.54, distance: 24)
 
                 if viewModel.isWorking {
                     ZStack {
