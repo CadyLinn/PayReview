@@ -47,7 +47,7 @@ If an input is missing, mark it `block` or `not applicable`. Do not infer a date
 - Verify deletion and account switching terminate Firestore, clear persistent cache and local sensitive data, and prevent a different `uid` from reading the previous user's data.
 - Verify ordinary account switching uses a cancellable 30-second pending-write maximum, cancels without data loss on timeout or failure, and blocks the next account when cache clearing fails.
 - Confirm Firestore Security Rules isolate all financial data by authenticated user ID.
-- Confirm user writes fail closed unless the server-owned account state exists and is exactly `active`; verify bootstrap derives `uid` only from the authenticated token and cannot overwrite or reactivate `deleting` or `deleted`.
+- Confirm user writes fail closed unless Firebase Authentication is present and the requested path belongs to the authenticated token `uid`; verify anonymous and cross-user access are rejected.
 - Confirm the MVP does not implement or request notification permission.
 - Confirm no unsupported access to banking, payment, LINE, contacts, location, camera, or photos is requested.
 

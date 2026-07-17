@@ -43,9 +43,7 @@ struct AppRootView: View {
                         }
                     )
                 }
-            } else if authentication.isPreparingAccount {
-                AccountPreparationView()
-            } else if authentication.isAccountReady {
+            } else {
                 if !hasCompletedPersonalization {
                     PersonalizedActivationView(
                         store: setupStore,
@@ -64,8 +62,6 @@ struct AppRootView: View {
                 } else {
                     PayReviewMainFlowView(setupStore: setupStore)
                 }
-            } else {
-                AccountRecoveryView(viewModel: authentication)
             }
         }
         .task {
@@ -111,43 +107,6 @@ private struct LaunchView: View {
             }
             withAnimation(.easeOut(duration: 0.6)) {
                 isVisible = true
-            }
-        }
-    }
-}
-
-private struct AccountPreparationView: View {
-    var body: some View {
-        VStack(spacing: 18) {
-            Image("PayReviewMascot")
-                .resizable()
-                .scaledToFill()
-                .frame(width: 96, height: 96)
-                .clipShape(Circle())
-            ProgressView("正在準備你的 PayReview")
-                .tint(PayReviewTheme.primary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(PayReviewTheme.background.ignoresSafeArea())
-    }
-}
-
-private struct AccountRecoveryView: View {
-    @ObservedObject var viewModel: AuthenticationTestViewModel
-
-    var body: some View {
-        ContentUnavailableView {
-            Label("帳號狀態尚未確認", systemImage: "arrow.triangle.2.circlepath")
-        } description: {
-            Text("連線恢復後可以再試一次，不會改變你的財務資料")
-        } actions: {
-            Button("重新確認") {
-                Task { await viewModel.prepareAccountState() }
-            }
-            .buttonStyle(.borderedProminent)
-
-            Button("登出", role: .destructive) {
-                viewModel.signOut()
             }
         }
     }

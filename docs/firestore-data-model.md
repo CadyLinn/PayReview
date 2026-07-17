@@ -5,7 +5,6 @@ Cloud Firestore is PayReview's authoritative financial-data store. Every user-ow
 ## Ownership and access
 
 ```text
-accountStates/{uid}                    Server-owned authorization state
 deletionRequests/{requestId}           Server-owned deletion status
 users/{uid}/profile/main               User profile and preferences
 users/{uid}/financialPlans/{planId}    Calculation assumptions
@@ -21,7 +20,7 @@ users/{uid}/decisionSnapshots/{snapshotId} Confirmed calculation evidence
 users/{uid}/deferredPurchases/{purchaseId} Preserved deferred decisions
 ```
 
-`accountStates` and `deletionRequests` are never written by the client. A trusted backend creates an `active` account state using only the authenticated Firebase token UID. Rules reject every user-data write unless that server-owned state exists and is `active`.
+Firebase Authentication is the MVP access boundary. Firestore Rules allow a user to access only documents under their authenticated `users/{uid}` path. `deletionRequests` is reserved for a future server-managed account-deletion workflow.
 
 ## Shared document fields
 
@@ -51,7 +50,7 @@ The synthetic test snapshot includes one financial plan, one income cycle, one f
 
 ## Delivery sequence
 
-1. Deploy the included fail-closed Firestore rules and create the trusted account-state backend.
+1. Deploy the included Firebase Authentication UID-scoped Firestore rules.
 2. Implement Firestore DTOs that map minor units and timestamps to the domain models.
-3. Enable repository reads only after an authenticated active account state is observed.
+3. Enable repository reads after Firebase Authentication resolves an authenticated session.
 4. Add idempotent transaction confirmation, planned-expense completion, offline rollback, and Emulator tests before enabling writes.

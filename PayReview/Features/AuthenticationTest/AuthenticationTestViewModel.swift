@@ -9,25 +9,13 @@ final class AuthenticationTestViewModel: ObservableObject {
     @Published var notice: String?
     @Published var errorMessage: String?
     @Published private(set) var isWorking = false
-    @Published private(set) var isPreparingAccount = false
-    @Published private(set) var isAccountReady = false
     @Published private(set) var hasResolvedAuthentication = false
 
     private let authenticationService: AuthenticationServicing
-    private let accountStateService: AccountStateServicing
     private var authStateHandle: AuthStateDidChangeListenerHandle?
 
     init() {
         authenticationService = AuthenticationService()
-        accountStateService = AccountStateService()
-    }
-
-    init(
-        authenticationService: AuthenticationServicing,
-        accountStateService: AccountStateServicing
-    ) {
-        self.authenticationService = authenticationService
-        self.accountStateService = accountStateService
     }
 
     func stopObserving() {
@@ -42,12 +30,7 @@ final class AuthenticationTestViewModel: ObservableObject {
         authStateHandle = authenticationService.observeAuthState { [weak self] user in
             Task { @MainActor in
                 self?.authenticatedUser = user
-                self?.isAccountReady = false
                 self?.hasResolvedAuthentication = true
-
-                if user != nil {
-                    await self?.prepareAccountState()
-                }
             }
         }
     }
@@ -75,24 +58,7 @@ final class AuthenticationTestViewModel: ObservableObject {
     func signOut() {
         do {
             try authenticationService.signOut()
-            isAccountReady = false
         } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    func prepareAccountState() async {
-        guard authenticatedUser != nil, !isPreparingAccount else { return }
-
-        isPreparingAccount = true
-        errorMessage = nil
-        defer { isPreparingAccount = false }
-
-        do {
-            try await accountStateService.ensureActiveAccountState()
-            isAccountReady = true
-        } catch {
-            isAccountReady = false
             errorMessage = error.localizedDescription
         }
     }
