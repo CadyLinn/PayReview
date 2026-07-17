@@ -15,11 +15,11 @@ See each purchase's real cost, budget and goal impact, with practical ways to st
 > Before you spend, understand the price and its impact.
 
 ## 官方資源
-[查看 PayReview Student Creator 專案頁](https://studentcreator.tw/apps/9220dab4-cc7a-4445-94be-c1ce51984231?event=848c34a8-d4da-4f02-9687-4d19335865cf)
+🪩[查看 PayReview Student Creator 專案頁](https://studentcreator.tw/apps/9220dab4-cc7a-4445-94be-c1ce51984231?event=848c34a8-d4da-4f02-9687-4d19335865cf)
 
-[PayReview 官方網站](https://payreview.yytttt420.chatgpt.site/)
+🪩[PayReview 官方網站](https://payreview.yytttt420.chatgpt.site/)
 
-[PayReview Figma 互動原型](https://www.figma.com/proto/XtdsfXhoOOPbBdrvvt1AZT/PayReview?node-id=274-166&t=M1VCGDrYjRdRyyvK-0&scaling=min-zoom&content-scaling=fixed&page-id=66%3A5&starting-point-node-id=292%3A192&show-proto-sidebar=1)
+🪩[PayReview Figma 互動原型](https://www.figma.com/proto/XtdsfXhoOOPbBdrvvt1AZT/PayReview?node-id=274-166&t=M1VCGDrYjRdRyyvK-0&scaling=min-zoom&content-scaling=fixed&page-id=66%3A5&starting-point-node-id=292%3A192&show-proto-sidebar=1)
 
 
 ## Demo
