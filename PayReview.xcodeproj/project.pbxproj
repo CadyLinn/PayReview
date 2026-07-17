@@ -12,7 +12,6 @@
 		A1B2C3D40000000000000003 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D40000000000000013 /* FirebaseStorage */; };
 		A1B2C3D40000000000000004 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D40000000000000014 /* GoogleSignIn */; };
 		A1B2C3D40000000000000005 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D40000000000000015 /* FirebaseCore */; };
-		A1B2C3D40000000000000006 /* FirebaseFunctions in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D40000000000000016 /* FirebaseFunctions */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -50,7 +49,6 @@
 				A1B2C3D40000000000000003 /* FirebaseStorage in Frameworks */,
 				A1B2C3D40000000000000004 /* GoogleSignIn in Frameworks */,
 				A1B2C3D40000000000000005 /* FirebaseCore in Frameworks */,
-				A1B2C3D40000000000000006 /* FirebaseFunctions in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -98,7 +96,6 @@
 				A1B2C3D40000000000000013 /* FirebaseStorage */,
 				A1B2C3D40000000000000014 /* GoogleSignIn */,
 				A1B2C3D40000000000000015 /* FirebaseCore */,
-				A1B2C3D40000000000000016 /* FirebaseFunctions */,
 			);
 			productName = PayReview;
 			productReference = 9BF36D9C30090D3D00864C72 /* PayReview.app */;
@@ -215,7 +212,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
@@ -272,7 +269,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
@@ -288,6 +285,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_ENTITLEMENTS = PayReview/PayReview.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 5X8T7G23F7;
 				ENABLE_PREVIEWS = YES;
@@ -325,6 +323,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_ENTITLEMENTS = PayReview/PayReview.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 5X8T7G23F7;
 				ENABLE_PREVIEWS = YES;
@@ -423,11 +422,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 9B69E16030090F9A000654A6 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseCore;
-		};
-		A1B2C3D40000000000000016 /* FirebaseFunctions */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 9B69E16030090F9A000654A6 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
-			productName = FirebaseFunctions;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
