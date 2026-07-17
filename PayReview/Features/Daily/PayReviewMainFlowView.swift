@@ -126,6 +126,7 @@ private struct TodayPrototypeView: View {
     @ObservedObject var setupStore: SetupStore
     @ObservedObject var flow: PayReviewFlowStore
     @State private var presentedFlow: TodayFlow?
+    @State private var approvedExpenseIDs = Set<UUID>()
 
     enum TodayFlow: Hashable, Identifiable {
         case evaluation, comparison, weekly
@@ -151,7 +152,7 @@ private struct TodayPrototypeView: View {
                     .foregroundStyle(PayReviewTheme.surface)
                     .padding(20)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(PayReviewTheme.primary, in: RoundedRectangle(cornerRadius: 28))
+                    .background(PayReviewTheme.darkSurface, in: RoundedRectangle(cornerRadius: 28))
                     .payReviewInteractiveTilt(maximumAngle: 4, focusedScale: 1.012)
                     .payReviewEntrance(delay: 0.08)
 
@@ -164,27 +165,36 @@ private struct TodayPrototypeView: View {
                     .payReviewEntrance(delay: 0.14)
 
                     VStack(alignment: .leading, spacing: 14) {
-                        Text("今天的三件事").font(.title3.bold())
-                        taskRow(done: true, "確認必要支出", "已完成 · 輕震回饋")
-                        taskRow(done: true, "保留旅遊基金 NT$140", "已完成 · 進度向前")
-                        taskRow(done: false, "消費前評估一次", "完成後蓋上今日印章")
+                        Text("今日固定支出").font(.title3.bold())
+                        Text("逐項核定今天需要預留的支出")
+                            .font(.caption)
+                            .foregroundStyle(PayReviewTheme.secondaryText)
+
+                        if setupStore.plannedExpenses.isEmpty {
+                            Text("今天沒有需要核定的固定支出")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(PayReviewTheme.secondaryText)
+                                .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
+                        } else {
+                            ForEach(setupStore.plannedExpenses) { expense in
+                                expenseChecklistRow(expense)
+                            }
+                        }
                     }
                     .padding(18)
-                    .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 24))
+                    .frame(maxWidth: .infinity, minHeight: 220, alignment: .topLeading)
+                    .background(PayReviewTheme.todayExpenseSurface, in: RoundedRectangle(cornerRadius: 24))
                     .payReviewEntrance(delay: 0.20)
 
                     HStack(spacing: 14) {
                         explorationButton("比價實驗室", "折扣真的\n比較划算嗎？", PayReviewTheme.cautionSurface) {
                             presentedFlow = .comparison
                         }
-                        explorationButton("本週故事", "看看紀錄\n帶來了什麼", PayReviewTheme.subtle) {
+                        explorationButton("本週故事", "看看紀錄\n帶來了什麼", PayReviewTheme.weeklyInsightSurface) {
                             presentedFlow = .weekly
                         }
                     }
                     .payReviewEntrance(delay: 0.26)
-
-                    MascotSpeechView(message: "今天不是追求完美，是知道下一步")
-                        .payReviewEntrance(delay: 0.32)
                 }
                 .padding(24)
             }
@@ -202,15 +212,45 @@ private struct TodayPrototypeView: View {
         }
     }
 
-    private func taskRow(done: Bool, _ title: String, _ detail: String) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: done ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(done ? PayReviewTheme.primary : PayReviewTheme.secondaryText)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.subheadline.weight(.semibold))
-                Text(detail).font(.caption).foregroundStyle(.secondary)
+    private func expenseChecklistRow(_ expense: PlannedExpenseDraft) -> some View {
+        let isApproved = approvedExpenseIDs.contains(expense.id)
+
+        return Button {
+            if isApproved {
+                approvedExpenseIDs.remove(expense.id)
+            } else {
+                approvedExpenseIDs.insert(expense.id)
             }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: isApproved ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(isApproved ? PayReviewTheme.primary : PayReviewTheme.secondaryText)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(expense.name)
+                            .font(.subheadline.weight(.semibold))
+                        Spacer(minLength: 12)
+                        Text(expense.amount.twdFormatted)
+                            .font(.subheadline.weight(.bold))
+                    }
+                    Text(isApproved ? "已核定" : "點一下核定今日支出")
+                        .font(.caption)
+                        .foregroundStyle(PayReviewTheme.secondaryText)
+                }
+                .strikethrough(isApproved, color: PayReviewTheme.secondaryText)
+                .foregroundStyle(isApproved ? PayReviewTheme.secondaryText : PayReviewTheme.primaryText)
+            }
+            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+            .background(PayReviewTheme.surface.opacity(0.72), in: RoundedRectangle(cornerRadius: 18))
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(expense.name)，\(expense.amount.twdFormatted)")
+        .accessibilityValue(isApproved ? "已核定" : "尚未核定")
+        .accessibilityHint(isApproved ? "點兩下取消核定" : "點兩下核定今日支出")
     }
 
     private func explorationButton(
