@@ -46,6 +46,19 @@ PayReview 會在消費發生前協助使用者了解：
 - 資料同步：Cloud Firestore
 - 金額計算：使用 `Decimal` 的確定性財務規則
 
+## Agentic AI 開發方式
+
+PayReview 將 Agentic AI 用於產品與工程協作，不讓生成式 AI 直接決定或修改財務結果。Agent 會先讀取 repository 規則與產品規格，再依任務載入專用 Skill、修改程式、執行驗證並回報風險；涉及發布、金融規則、隱私或架構決策時，仍由團隊成員確認。
+
+目前 repository 提供兩個 PayReview 專用 Skill：
+
+| Skill | 使用時機 | 主要功能 |
+| --- | --- | --- |
+| `evaluate-impulse-spend` | 實作、測試或檢視消費前評估與 Decision Card | 驗證輸入、計算安心可花範圍、分類評估狀態、分析目標影響、產生恢復選項，並確保評估不會提前建立交易 |
+| `payreview-release-check` | TestFlight、App Store 審核、預購或正式發布前 | 檢查財務完整性、隱私與帳號、訂閱、商店素材、法務、品質及發布授權，輸出 `pass`、`block`、`not applicable` 與 `GO`／`NO-GO` 報告 |
+
+完整設計、執行流程及人工審核界線請參閱 [Agentic AI 與團隊協作](docs/agentic-ai-team-workflow.md)。
+
 ## 專案結構
 
 ```text
@@ -85,18 +98,21 @@ skills/           PayReview 專用 Agent 工作流程
 - [產品上線計畫](PRODUCT_LAUNCH_PLAN_V0.2.md)
 - [技術架構](TECH_STACK.md)
 - [Firestore 資料模型](docs/firestore-data-model.md)
+- [Agentic AI 與團隊協作](docs/agentic-ai-team-workflow.md)
 
 ## 團隊與作者
 
 PayReview 由 **PayReview Team** 設計與開發。
 
-依 repository 提交紀錄，目前主要貢獻者包括：
+依 repository 提交紀錄整理的目前主要分工如下：
 
-- Cady
-- machshyi
-- eli_liao
+| 成員 | 主要角色 | 負責範圍 |
+| --- | --- | --- |
+| Cady | PM、產品與 iOS 整合 | 產品規格、上線規劃、Onboarding、登入體驗、技術決策、專用 Skill 與跨功能整合 |
+| machshyi | UI/UX 與日常體驗 | Figma 對齊、Today、Plan、Records、日常財務互動與產品文件協作 |
+| eli_liao | Firebase、驗證與資料安全 | Authentication、Firestore、Security Rules、帳號狀態、後端流程與資料模型 |
 
-貢獻者名單依 Git commit authorship 整理；如需調整顯示名稱或團隊角色，請由專案維護者更新本節。
+所有成員共同負責 Agentic AI 任務拆解、輸出檢視、測試驗證與 Pull Request review。此分工依目前 commit authorship 與修改範圍整理，正式職稱及責任歸屬仍以團隊確認版本為準。
 
 ## 貢獻方式
 
