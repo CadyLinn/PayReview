@@ -4,8 +4,8 @@ struct AppRootView: View {
     @StateObject private var authentication = AuthenticationTestViewModel()
     @StateObject private var setupStore = SetupStore()
     @AppStorage("hasSeenPayReviewIntroduction") private var hasSeenIntroduction = false
-    @State private var hasCompletedPersonalization = false
-    @State private var hasCompletedSetup = false
+    @AppStorage("hasCompletedPayReviewPersonalization") private var hasCompletedPersonalization = false
+    @AppStorage("hasCompletedPayReviewSetup") private var hasCompletedSetup = false
     @State private var introductionStartsAtFinalPage = false
     @State private var startsAtSignIn = false
 
@@ -43,12 +43,8 @@ struct AppRootView: View {
                         }
                     )
                 }
-            } else if authentication.isPreparingAccount {
-                AccountPreparationView()
-            } else if authentication.isAccountReady {
-                if authentication.hasFinancialPlan || hasCompletedSetup {
-                    PayReviewMainFlowView(setupStore: setupStore, authentication: authentication)
-                } else if !hasCompletedPersonalization {
+            } else {
+                if !hasCompletedPersonalization {
                     PersonalizedActivationView(
                         store: setupStore,
                         backToSignIn: {
@@ -57,24 +53,19 @@ struct AppRootView: View {
                         },
                         completion: {
                             hasCompletedPersonalization = true
-                            saveUserScopedProgress()
                         }
                     )
                 } else if !hasCompletedSetup {
                     SetupFlowView(store: setupStore) {
                         hasCompletedSetup = true
-                        saveUserScopedProgress()
                     }
+                } else {
+                    PayReviewMainFlowView(setupStore: setupStore)
                 }
-            } else {
-                AccountRecoveryView(viewModel: authentication)
             }
         }
         .task {
             authentication.startObserving()
-        }
-        .onChange(of: authentication.authenticatedUser?.id) { _, _ in
-            loadUserScopedProgress()
         }
         .alert("登入問題", isPresented: errorBinding) {
             Button("好", role: .cancel) {
@@ -83,32 +74,6 @@ struct AppRootView: View {
         } message: {
             Text(authentication.errorMessage ?? "")
         }
-    }
-
-    private func loadUserScopedProgress() {
-        guard let userID = authentication.authenticatedUser?.id else {
-            hasCompletedPersonalization = false
-            hasCompletedSetup = false
-            return
-        }
-        hasCompletedPersonalization = UserDefaults.standard.bool(
-            forKey: "payReview.\(userID).hasCompletedPersonalization"
-        )
-        hasCompletedSetup = UserDefaults.standard.bool(
-            forKey: "payReview.\(userID).hasCompletedSetup"
-        )
-    }
-
-    private func saveUserScopedProgress() {
-        guard let userID = authentication.authenticatedUser?.id else { return }
-        UserDefaults.standard.set(
-            hasCompletedPersonalization,
-            forKey: "payReview.\(userID).hasCompletedPersonalization"
-        )
-        UserDefaults.standard.set(
-            hasCompletedSetup,
-            forKey: "payReview.\(userID).hasCompletedSetup"
-        )
     }
 
     private var errorBinding: Binding<Bool> {
@@ -142,43 +107,6 @@ private struct LaunchView: View {
             }
             withAnimation(.easeOut(duration: 0.6)) {
                 isVisible = true
-            }
-        }
-    }
-}
-
-private struct AccountPreparationView: View {
-    var body: some View {
-        VStack(spacing: 18) {
-            Image("PayReviewMascot")
-                .resizable()
-                .scaledToFill()
-                .frame(width: 96, height: 96)
-                .clipShape(Circle())
-            ProgressView("正在準備你的 PayReview")
-                .tint(PayReviewTheme.primary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(PayReviewTheme.background.ignoresSafeArea())
-    }
-}
-
-private struct AccountRecoveryView: View {
-    @ObservedObject var viewModel: AuthenticationTestViewModel
-
-    var body: some View {
-        ContentUnavailableView {
-            Label("帳號狀態尚未確認", systemImage: "arrow.triangle.2.circlepath")
-        } description: {
-            Text("連線恢復後可以再試一次，不會改變你的財務資料")
-        } actions: {
-            Button("重新確認") {
-                Task { await viewModel.prepareAccountState() }
-            }
-            .buttonStyle(.borderedProminent)
-
-            Button("登出", role: .destructive) {
-                viewModel.signOut()
             }
         }
     }

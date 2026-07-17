@@ -9,6 +9,8 @@ enum PayReviewTheme {
     static let secondaryText = Color(red: 96 / 255, green: 113 / 255, blue: 105 / 255)
     static let safe = Color(red: 127 / 255, green: 209 / 255, blue: 176 / 255)
     static let cautionSurface = Color(red: 250 / 255, green: 239 / 255, blue: 214 / 255)
+    static let todayExpenseSurface = Color(red: 222 / 255, green: 237 / 255, blue: 246 / 255)
+    static let weeklyInsightSurface = Color(red: 235 / 255, green: 228 / 255, blue: 246 / 255)
     static let darkSurface = Color(red: 7 / 255, green: 43 / 255, blue: 41 / 255)
     static let darkRaised = Color(red: 14 / 255, green: 68 / 255, blue: 61 / 255)
 }

@@ -3,7 +3,7 @@ import SwiftUI
 
 @MainActor
 final class PayReviewFlowStore: ObservableObject {
-    enum Tab: Hashable { case today, plan, records, settings }
+    enum Tab: Hashable { case today, plan, records }
     enum EvaluationSource { case first, today, comparison }
 
     @Published var selectedTab: Tab = .today
@@ -20,14 +20,10 @@ final class PayReviewFlowStore: ObservableObject {
         PayReviewRecord(title: "帳戶轉帳", detail: "錢包 → 銀行", amount: 3_000, kind: .transfer)
     ]
 
-    var evaluationAmountValue: Decimal {
-        evaluationAmount ?? 0
-    }
+    var evaluationAmountValue: Decimal { evaluationAmount ?? 0 }
 
     var confirmedExpenseTotal: Decimal {
-        records
-            .filter { $0.kind == .expense }
-            .reduce(Decimal.zero) { $0 + $1.amount }
+        records.filter { $0.kind == .expense }.reduce(Decimal.zero) { $0 + $1.amount }
     }
 
     func beginEvaluation(source: EvaluationSource, amount: Decimal? = nil, category: String = "購物") {
@@ -80,6 +76,13 @@ final class PayReviewFlowStore: ObservableObject {
         return true
     }
 
+    func reopenPlannedExpense(_ expense: PlannedExpenseDraft) {
+        confirmedRecordIDs.remove(expense.id)
+        records.removeAll {
+            $0.title == expense.name && $0.detail == "帳單 · 已完成預期支出"
+        }
+    }
+
     @discardableResult
     func confirmRecord(
         confirmationID: UUID,
@@ -101,53 +104,35 @@ struct PayReviewRecord: Identifiable, Equatable {
     var detail: String
     var amount: Decimal
     var kind: Kind
+    var recordedAt: Date = .now
 }
 
 struct PayReviewMainFlowView: View {
     @ObservedObject var setupStore: SetupStore
-    @ObservedObject var authentication: AuthenticationTestViewModel
     @StateObject private var flow = PayReviewFlowStore()
-    @State private var hasCompletedFirstEvaluation = false
+    @AppStorage("hasCompletedFirstPayReviewEvaluation") private var hasCompletedFirstEvaluation = false
     @State private var showsFirstEvaluation = false
 
     var body: some View {
-        MainTabView(setupStore: setupStore, flow: flow, authentication: authentication)
+        MainTabView(setupStore: setupStore, flow: flow)
             .tint(PayReviewTheme.primary)
             .fullScreenCover(isPresented: $showsFirstEvaluation) {
                 EvaluationFlowView(flow: flow, startsWithResult: false) {
                     hasCompletedFirstEvaluation = true
-                    saveFirstEvaluationProgress()
                     showsFirstEvaluation = false
                 }
             }
             .onAppear {
-                loadFirstEvaluationProgress()
                 guard !hasCompletedFirstEvaluation else { return }
                 flow.beginEvaluation(source: .first)
                 showsFirstEvaluation = true
             }
-    }
-
-    private func loadFirstEvaluationProgress() {
-        guard let userID = authentication.authenticatedUser?.id else { return }
-        hasCompletedFirstEvaluation = UserDefaults.standard.bool(
-            forKey: "payReview.\(userID).hasCompletedFirstEvaluation"
-        )
-    }
-
-    private func saveFirstEvaluationProgress() {
-        guard let userID = authentication.authenticatedUser?.id else { return }
-        UserDefaults.standard.set(
-            hasCompletedFirstEvaluation,
-            forKey: "payReview.\(userID).hasCompletedFirstEvaluation"
-        )
     }
 }
 
 private struct MainTabView: View {
     @ObservedObject var setupStore: SetupStore
     @ObservedObject var flow: PayReviewFlowStore
-    @ObservedObject var authentication: AuthenticationTestViewModel
 
     var body: some View {
         TabView(selection: $flow.selectedTab) {
@@ -157,12 +142,9 @@ private struct MainTabView: View {
             PlanPrototypeView(setupStore: setupStore)
                 .tabItem { Label("計畫", systemImage: "scope") }
                 .tag(PayReviewFlowStore.Tab.plan)
-            RecordsPrototypeView(flow: flow)
+            RecordsPrototypeView(setupStore: setupStore, flow: flow)
                 .tabItem { Label("紀錄", systemImage: "list.bullet.rectangle") }
                 .tag(PayReviewFlowStore.Tab.records)
-            SettingsPrototypeView(authentication: authentication)
-                .tabItem { Label("設定", systemImage: "gearshape.fill") }
-                .tag(PayReviewFlowStore.Tab.settings)
         }
     }
 }
@@ -171,6 +153,7 @@ private struct TodayPrototypeView: View {
     @ObservedObject var setupStore: SetupStore
     @ObservedObject var flow: PayReviewFlowStore
     @State private var presentedFlow: TodayFlow?
+    @State private var approvedExpenseIDs = Set<UUID>()
 
     enum TodayFlow: Hashable, Identifiable {
         case evaluation, comparison, weekly
@@ -181,10 +164,6 @@ private struct TodayPrototypeView: View {
         max(0, setupStore.flexibleBudget - flow.confirmedExpenseTotal)
     }
 
-    private var nextPlannedExpense: PlannedExpenseDraft? {
-        setupStore.plannedExpenses.min { $0.amount < $1.amount }
-    }
-
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -192,19 +171,25 @@ private struct TodayPrototypeView: View {
                     HStack(alignment: .center) {
                         Text("7/17 今天").font(.largeTitle.bold())
                         Spacer()
-                        ActivationMascot(size: 68)
+                        NavigationLink {
+                            SettingsPrototypeView(embedsNavigationStack: false)
+                        } label: {
+                            ActivationMascot(size: 68)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("帳號與安全設定")
                     }
                     .payReviewEntrance(delay: 0.02)
 
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("安心可花估算").font(.subheadline.weight(.semibold))
-                        Text(safeToSpend.twdFormatted).font(.system(size: 38, weight: .bold, design: .rounded))
+                        Text("今天約可安心花").font(.subheadline.weight(.semibold))
+                        Text(safeToSpend.twdFormatted).font(.system(size: 44, weight: .bold, design: .rounded))
                         Text("已扣除目前確認的支出；金額為估算").font(.footnote)
                     }
                     .foregroundStyle(PayReviewTheme.surface)
                     .padding(20)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(PayReviewTheme.primary, in: RoundedRectangle(cornerRadius: 28))
+                    .background(PayReviewTheme.darkSurface, in: RoundedRectangle(cornerRadius: 28))
                     .payReviewInteractiveTilt(maximumAngle: 4, focusedScale: 1.012)
                     .payReviewEntrance(delay: 0.08)
 
@@ -217,43 +202,36 @@ private struct TodayPrototypeView: View {
                     .payReviewEntrance(delay: 0.14)
 
                     VStack(alignment: .leading, spacing: 14) {
-                        Text("今天的三件事").font(.title3.bold())
-                        if let expense = nextPlannedExpense {
-                            Button {
-                                flow.completePlannedExpense(expense)
-                            } label: {
-                                taskRow(
-                                    done: flow.records.contains { $0.detail.contains("已完成預期支出") && $0.title == expense.name },
-                                    "完成今日固定支出：\(expense.name)",
-                                    expense.amount.twdFormatted
-                                )
+                        Text("今日固定支出").font(.title3.bold())
+                        Text("逐項核定今天需要預留的支出")
+                            .font(.caption)
+                            .foregroundStyle(PayReviewTheme.secondaryText)
+
+                        if setupStore.plannedExpenses.isEmpty {
+                            Text("今天沒有需要核定的固定支出")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(PayReviewTheme.secondaryText)
+                                .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
+                        } else {
+                            ForEach(setupStore.plannedExpenses) { expense in
+                                expenseChecklistRow(expense)
                             }
-                            .buttonStyle(.plain)
-                            .disabled(
-                                flow.records.contains {
-                                    $0.detail.contains("已完成預期支出") && $0.title == expense.name
-                                }
-                            )
                         }
-                        taskRow(done: true, "保留旅遊基金 NT$140", "已完成 · 進度向前")
-                        taskRow(done: false, "消費前評估一次", "完成後蓋上今日印章")
                     }
                     .padding(18)
-                    .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 24))
+                    .frame(maxWidth: .infinity, minHeight: 220, alignment: .topLeading)
+                    .background(PayReviewTheme.todayExpenseSurface, in: RoundedRectangle(cornerRadius: 24))
                     .payReviewEntrance(delay: 0.20)
 
                     HStack(spacing: 14) {
                         explorationButton("比價實驗室", "折扣真的\n比較划算嗎？", PayReviewTheme.cautionSurface) {
                             presentedFlow = .comparison
                         }
-                        explorationButton("本週故事", "看看紀錄\n帶來了什麼", PayReviewTheme.subtle) {
+                        explorationButton("本週故事", "看看紀錄\n帶來了什麼", PayReviewTheme.weeklyInsightSurface) {
                             presentedFlow = .weekly
                         }
                     }
                     .payReviewEntrance(delay: 0.26)
-
-                    MascotSpeechView(message: "今天不是追求完美，是知道下一步")
-                        .payReviewEntrance(delay: 0.32)
                 }
                 .padding(24)
             }
@@ -271,15 +249,47 @@ private struct TodayPrototypeView: View {
         }
     }
 
-    private func taskRow(done: Bool, _ title: String, _ detail: String) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: done ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(done ? PayReviewTheme.primary : PayReviewTheme.secondaryText)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.subheadline.weight(.semibold))
-                Text(detail).font(.caption).foregroundStyle(.secondary)
+    private func expenseChecklistRow(_ expense: PlannedExpenseDraft) -> some View {
+        let isApproved = approvedExpenseIDs.contains(expense.id)
+
+        return Button {
+            if isApproved {
+                approvedExpenseIDs.remove(expense.id)
+                flow.reopenPlannedExpense(expense)
+            } else {
+                approvedExpenseIDs.insert(expense.id)
+                flow.completePlannedExpense(expense)
             }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: isApproved ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(isApproved ? PayReviewTheme.primary : PayReviewTheme.secondaryText)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(expense.name)
+                            .font(.subheadline.weight(.semibold))
+                        Spacer(minLength: 12)
+                        Text(expense.amount.twdFormatted)
+                            .font(.subheadline.weight(.bold))
+                    }
+                    Text(isApproved ? "已核定" : "點一下核定今日支出")
+                        .font(.caption)
+                        .foregroundStyle(PayReviewTheme.secondaryText)
+                }
+                .strikethrough(isApproved, color: PayReviewTheme.secondaryText)
+                .foregroundStyle(isApproved ? PayReviewTheme.secondaryText : PayReviewTheme.primaryText)
+            }
+            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+            .background(PayReviewTheme.surface.opacity(0.72), in: RoundedRectangle(cornerRadius: 18))
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(expense.name)，\(expense.amount.twdFormatted)")
+        .accessibilityValue(isApproved ? "已核定" : "尚未核定")
+        .accessibilityHint(isApproved ? "點兩下取消核定" : "點兩下核定今日支出")
     }
 
     private func explorationButton(
@@ -325,7 +335,7 @@ private struct EvaluationFlowView: View {
                     case .result:
                         DecisionCardPrototypeView(
                             flow: flow,
-                            purchaseAction: { path.append(.record) },
+                            purchase: { path.append(.record) },
                             deferAction: {
                                 flow.deferCurrentEvaluation()
                                 completion()
@@ -366,8 +376,8 @@ private struct EvaluationInputPrototypeView: View {
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("預計花費").font(.caption).foregroundStyle(.secondary)
-                    TextField("NT$0", value: $flow.evaluationAmount, format: .payReviewTWD)
-                        .keyboardType(.numberPad)
+                    TextField("NT$0", value: $flow.evaluationAmount, format: .currency(code: "TWD"))
+                        .keyboardType(.decimalPad)
                         .font(.system(size: 40, weight: .bold, design: .rounded))
                 }
                 .padding(18)
@@ -397,7 +407,7 @@ private struct EvaluationInputPrototypeView: View {
 
 private struct DecisionCardPrototypeView: View {
     @ObservedObject var flow: PayReviewFlowStore
-    let purchaseAction: () -> Void
+    let purchase: () -> Void
     let deferAction: () -> Void
     let skipAction: () -> Void
     let adjustPlanAction: () -> Void
@@ -405,85 +415,66 @@ private struct DecisionCardPrototypeView: View {
     @State private var showsPlus = false
     @State private var revealStep = 0
 
+    private var overage: Decimal { max(0, flow.evaluationAmountValue - 680) }
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("付款前評估")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(PayReviewTheme.safe)
+            VStack(alignment: .leading, spacing: 14) {
+                Text("第一次評估結果").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                     .opacity(revealStep >= 1 ? 1 : 0)
                     .offset(y: revealStep >= 1 ? 0 : 12)
-
-                MascotSpeechView(
-                    message: "先把資料補齊，再決定也不遲",
-                    avatarSize: 88
-                )
-                .opacity(revealStep >= 1 ? 1 : 0)
-
-                Text("這筆 \(flow.evaluationAmountValue.twdFormatted)\n目前還不能可靠計算")
-                    .font(.system(size: 29, weight: .bold))
-                    .foregroundStyle(PayReviewTheme.surface)
+                Text("想買沒有錯；先看看哪條路\n最符合你現在的計畫")
+                    .font(.title.bold())
                     .opacity(revealStep >= 1 ? 1 : 0)
                     .offset(y: revealStep >= 1 ? 0 : 14)
 
-                Text("資料不足時，PayReview 不會替你猜答案")
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(PayReviewTheme.safe)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(overage > 0 ? "超出目前可用額度" : "仍在目前可用額度內")
+                        .font(.subheadline.weight(.semibold))
+                    Text(overage > 0 ? overage.twdFormatted : (680 - flow.evaluationAmountValue).twdFormatted)
+                        .font(.system(size: 38, weight: .bold, design: .rounded))
+                }
+                .padding(18)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(overage > 0 ? PayReviewTheme.cautionSurface : PayReviewTheme.subtle, in: RoundedRectangle(cornerRadius: 24))
                 .opacity(revealStep >= 2 ? 1 : 0)
                 .offset(y: revealStep >= 2 ? 0 : 18)
 
-                resultCard(
-                    "目前知道",
-                    "金額是 \(flow.evaluationAmountValue.twdFormatted)，類別是「\(flow.evaluationCategory)」",
-                    color: PayReviewTheme.darkRaised,
-                    dark: true
-                )
+                resultCard("預算", overage > 0 ? "本週彈性空間不足 \(overage.twdFormatted)" : "買完仍保留 \((680 - flow.evaluationAmountValue).twdFormatted)")
                     .opacity(revealStep >= 3 ? 1 : 0)
                     .offset(y: revealStep >= 3 ? 0 : 18)
-                resultCard(
-                    "還缺什麼",
-                    "最新收入、必要支出與可用預算",
-                    color: PayReviewTheme.cautionSurface
-                )
+                resultCard("目標", overage > 0 ? "若不調整其他支出，預估延後 4 天" : "使用彈性預算支付，目標日期不變")
                     .opacity(revealStep >= 4 ? 1 : 0)
                     .offset(y: revealStep >= 4 ? 0 : 18)
-                resultCard(
-                    "下一步",
-                    "補齊計畫後，再查看預算與目標影響",
-                    color: PayReviewTheme.subtle
-                )
+                resultCard("恢復", overage > 0 ? "接下來 4 天每天保留 NT$80" : "不需要改變原本目標日期")
                     .opacity(revealStep >= 5 ? 1 : 0)
                     .offset(y: revealStep >= 5 ? 0 : 18)
 
-                Button("補齊計畫，再看影響", action: adjustPlanAction)
-                    .font(.body.weight(.bold))
-                    .foregroundStyle(PayReviewTheme.primaryText)
-                    .frame(maxWidth: .infinity, minHeight: 52)
-                    .background(PayReviewTheme.surface, in: RoundedRectangle(cornerRadius: 16))
-
-                Button("購買並記錄", action: purchaseAction)
+                Button("完成評估並確認購買記帳", action: purchase)
                     .buttonStyle(PayReviewPrimaryButtonStyle())
-
-                HStack(spacing: 12) {
-                    Button("晚點決定", action: deferAction)
-                    Button("略過", action: skipAction)
-                }
-                .buttonStyle(.bordered)
-                .tint(PayReviewTheme.safe)
-                .frame(maxWidth: .infinity)
+                    .payReviewShimmer()
+                Button("晚點再決定", action: deferAction)
+                    .buttonStyle(.bordered)
+                    .frame(maxWidth: .infinity)
+                Button("調整計畫", action: adjustPlanAction)
+                    .buttonStyle(.bordered)
+                    .frame(maxWidth: .infinity)
+                Button("略過這次評估", action: skipAction)
+                    .buttonStyle(.plain)
+                    .frame(maxWidth: .infinity)
+                    .foregroundStyle(.secondary)
 
                 HStack {
-                    Text("計算狀態：資料不足")
+                    Text("\(flow.evaluationAmountValue.twdFormatted) · \(flow.evaluationCategory)")
                     Spacer()
                     Button("看看完整 Plus 功能") { showsPlus = true }
                 }
-                .font(.footnote)
-                .foregroundStyle(PayReviewTheme.safe)
+                .font(.footnote.weight(.semibold))
                 .opacity(revealStep >= 6 ? 1 : 0)
             }
             .padding(24)
         }
-        .background(PayReviewTheme.darkSurface.ignoresSafeArea())
+        .background(PayReviewTheme.background.ignoresSafeArea())
         .sheet(isPresented: $showsPlus) { PlusOfferView() }
         .task {
             guard revealStep == 0 else { return }
@@ -498,23 +489,14 @@ private struct DecisionCardPrototypeView: View {
         }
     }
 
-    private func resultCard(
-        _ title: String,
-        _ detail: String,
-        color: Color,
-        dark: Bool = false
-    ) -> some View {
+    private func resultCard(_ title: String, _ detail: String) -> some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(title)
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(dark ? PayReviewTheme.safe : PayReviewTheme.primaryText)
-            Text(detail)
-                .font(.headline)
-                .foregroundStyle(dark ? PayReviewTheme.surface : PayReviewTheme.primaryText)
+            Text(title).font(.caption.weight(.bold)).foregroundStyle(.secondary)
+            Text(detail).font(.headline)
         }
-        .padding(18)
-        .frame(maxWidth: .infinity, minHeight: 104, alignment: .leading)
-        .background(color, in: RoundedRectangle(cornerRadius: 24))
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 20))
     }
 }
 
@@ -529,8 +511,8 @@ private struct EvaluatedExpensePrototypeView: View {
                 Text("尚未確認前，不會更新正式預算").font(.footnote).foregroundStyle(.secondary)
             }
             Section("支出金額") {
-                TextField("金額", value: $flow.evaluationAmount, format: .payReviewTWD)
-                    .keyboardType(.numberPad).font(.title2.bold())
+                TextField("金額", value: $flow.evaluationAmount, format: .currency(code: "TWD"))
+                    .keyboardType(.decimalPad).font(.title2.bold())
             }
             Section("類別") {
                 Picker("類別", selection: $flow.evaluationCategory) {
@@ -597,12 +579,7 @@ private struct ComparisonLabView: View {
         case a = "A"
         case b = "B"
 
-        var amount: Decimal {
-            switch self {
-            case .a: 960
-            case .b: 1_150
-            }
-        }
+        var amount: Decimal { self == .a ? 960 : 1_150 }
     }
 
     @ObservedObject var flow: PayReviewFlowStore
@@ -616,21 +593,9 @@ private struct ComparisonLabView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("折扣高，不一定更符合你的計畫").font(.title.bold())
                     Text("同時看實付、買進的份量，以及對目標的機會成本").foregroundStyle(.secondary)
-                    comparisonCard(
-                        plan: .a,
-                        title: "A · 單件購買",
-                        price: "實付 NT$960",
-                        detail: "折扣 NT$100\n只買現在需要的",
-                        impact: "目標日期不變"
-                    )
+                    comparisonCard(plan: .a, "A · 單件購買", "實付 NT$960", "折扣 NT$100\n只買現在需要的", "目標日期不變")
                         .payReviewEntrance(delay: 0.08)
-                    comparisonCard(
-                        plan: .b,
-                        title: "B · 折扣組合",
-                        price: "實付 NT$1,150",
-                        detail: "折扣 NT$300\n需多買未規劃品項",
-                        impact: "預估延後 5 天"
-                    )
+                    comparisonCard(plan: .b, "B · 折扣組合", "實付 NT$1,150", "折扣 NT$300\n需多買未規劃品項", "預估延後 5 天")
                         .payReviewEntrance(delay: 0.16)
                     Text("方案 B 折扣較大，但多出的支出會占用旅遊基金進度")
                         .font(.subheadline.weight(.semibold))
@@ -662,10 +627,10 @@ private struct ComparisonLabView: View {
 
     private func comparisonCard(
         plan: Plan,
-        title: String,
-        price: String,
-        detail: String,
-        impact: String
+        _ title: String,
+        _ price: String,
+        _ detail: String,
+        _ impact: String
     ) -> some View {
         Button {
             selectedPlan = plan
@@ -724,191 +689,388 @@ private struct WeeklyStoryView: View {
 
 private struct PlanPrototypeView: View {
     @ObservedObject var setupStore: SetupStore
-    var body: some View {
-        NavigationStack {
-            List {
-                Section { Text("以下是目前計算安心可花額度與目標影響的假設").foregroundStyle(.secondary) }
-                Section("目前計算假設") {
-                    LabeledContent("收入週期", value: setupStore.incomeCadence.rawValue)
-                    LabeledContent("必要支出", value: setupStore.plannedExpenseTotal.twdFormatted)
-                    LabeledContent("彈性預算", value: setupStore.flexibleBudget.twdFormatted)
-                    LabeledContent("安全緩衝", value: "已保留")
-                    LabeledContent("目標", value: setupStore.goalName)
-                }
-                Section { NavigationLink("檢視並調整計畫") { PlanAssumptionsEditorView(store: setupStore) } }
-            }
-            .navigationTitle("計畫")
-        }
-    }
-}
+    @State private var draftGoalName: String
+    @State private var draftIncomeCadence: IncomeCadence
+    @State private var draftPlannedExpenseTotal: Int
+    @State private var draftFlexibleBudget: Int
+    @State private var showsUpdatedPlan = false
 
-private struct PlanAssumptionsEditorView: View {
-    @ObservedObject var store: SetupStore
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        Form {
-            Section("收入與週期") {
-                Picker("收入週期", selection: $store.incomeCadence) {
-                    ForEach(IncomeCadence.allCases) { cadence in
-                        Text(cadence.rawValue).tag(cadence)
-                    }
-                }
-                DatePicker("下次收入日", selection: $store.nextIncomeDate, displayedComponents: .date)
-                TextField("本期可用收入", value: $store.availableIncome, format: .payReviewTWD)
-                    .keyboardType(.numberPad)
-            }
-            Section("支出與安全空間") {
-                LabeledContent("已規劃必要支出", value: store.plannedExpenseTotal.twdFormatted)
-                TextField("彈性預算", value: $store.flexibleBudget, format: .payReviewTWD)
-                    .keyboardType(.numberPad)
-                Text("必要支出會先保留，再計算安心可花額度。")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-            Section("目標") {
-                TextField("目標名稱", text: $store.goalName)
-                TextField("目標金額", value: $store.goalAmount, format: .payReviewTWD)
-                    .keyboardType(.numberPad)
-                DatePicker("目標日期", selection: $store.targetDate, displayedComponents: .date)
-            }
-            Section {
-                Button("儲存並返回計畫") { dismiss() }
-                    .buttonStyle(PayReviewPrimaryButtonStyle())
-            }
-            .listRowBackground(Color.clear)
-        }
-        .navigationTitle("調整計畫")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-}
-
-private struct RecordsPrototypeView: View {
-    @ObservedObject var flow: PayReviewFlowStore
-    @State private var showsAddRecord = false
-    @State private var selectedRecord: PayReviewRecord?
-    @State private var filter: RecordFilter = .all
-
-    private enum RecordFilter: String, CaseIterable, Identifiable {
-        case all = "全部"
-        case transactions = "交易"
-        case evaluations = "評估"
-        case deferred = "延後"
-
-        var id: Self { self }
+    init(setupStore: SetupStore) {
+        self.setupStore = setupStore
+        _draftGoalName = State(initialValue: setupStore.goalName)
+        _draftIncomeCadence = State(initialValue: setupStore.incomeCadence)
+        _draftPlannedExpenseTotal = State(initialValue: NSDecimalNumber(decimal: setupStore.plannedExpenseTotal).intValue)
+        _draftFlexibleBudget = State(initialValue: NSDecimalNumber(decimal: setupStore.flexibleBudget).intValue)
     }
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 18) {
-                    HStack {
-                        Text("紀錄")
-                            .font(.largeTitle.bold())
-                        Spacer()
-                    }
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("計畫").font(.largeTitle.bold())
 
-                    HStack {
-                        VStack(alignment: .leading, spacing: 7) {
-                            Text("目前已確認支出")
-                                .font(.subheadline.weight(.semibold))
-                            Text(confirmedExpenseTotal.twdFormatted)
-                                .font(.system(size: 32, weight: .semibold, design: .rounded))
-                            Text("轉帳不計入收支")
-                                .font(.footnote)
+                    VStack(alignment: .leading, spacing: 14) {
+                        TextField("自訂目標", text: $draftGoalName)
+                            .font(.system(size: 32, weight: .bold, design: .rounded))
+                        Text("目標金額 \(setupStore.goalAmount.twdFormatted) · \(setupStore.targetDate.formatted(date: .abbreviated, time: .omitted))")
+                            .font(.footnote)
+
+                        Divider()
+
+                        Text("目前計算假設").font(.title3.bold())
+                        assumptionControlRow("calendar", "收入週期") {
+                            Picker("收入週期", selection: $draftIncomeCadence) {
+                                Text("每日").tag(IncomeCadence.daily)
+                                Text("每月").tag(IncomeCadence.monthly)
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
                         }
-                        Spacer()
-                        ActivationMascot(size: 66)
+                        Divider().padding(.leading, 52)
+                        assumptionControlRow("checklist", "必要支出") {
+                            moneyWheelPicker(selection: $draftPlannedExpenseTotal)
+                        }
+                        Divider().padding(.leading, 52)
+                        assumptionControlRow("slider.horizontal.3", "彈性預算") {
+                            moneyWheelPicker(selection: $draftFlexibleBudget)
+                        }
+                        Divider().padding(.leading, 52)
+                        assumptionRow("shield", "安全緩衝", "已保留")
                     }
-                    .foregroundStyle(PayReviewTheme.subtle)
                     .padding(18)
-                    .frame(maxWidth: .infinity, minHeight: 112)
-                    .background(PayReviewTheme.primary, in: RoundedRectangle(cornerRadius: 26))
+                    .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
 
-                    HStack(spacing: 8) {
-                        ForEach(RecordFilter.allCases) { option in
-                            Button(option.rawValue) { filter = option }
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(PayReviewTheme.primaryText)
-                                .frame(maxWidth: .infinity, minHeight: 40)
-                                .background(
-                                    filter == option ? PayReviewTheme.cautionSurface : PayReviewTheme.subtle,
-                                    in: Capsule()
-                                )
+                    Button {
+                        updatePlan()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Text(showsUpdatedPlan ? "計畫已更新" : "更新計畫")
+                            Image(systemName: showsUpdatedPlan ? "checkmark" : "arrow.clockwise")
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(PayReviewPrimaryButtonStyle())
+                }
+                .padding(24)
+            }
+            .background(PayReviewTheme.background.ignoresSafeArea())
+        }
+    }
+
+    private func assumptionRow(_ icon: String, _ title: String, _ value: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(PayReviewTheme.primary)
+                .frame(width: 40, height: 40)
+                .background(PayReviewTheme.subtle, in: Circle())
+
+            Text(title).font(.subheadline.weight(.semibold))
+            Spacer()
+            Text(value)
+                .font(.subheadline)
+                .foregroundStyle(PayReviewTheme.secondaryText)
+                .multilineTextAlignment(.trailing)
+        }
+    }
+
+    private func assumptionControlRow<Control: View>(
+        _ icon: String,
+        _ title: String,
+        @ViewBuilder control: () -> Control
+    ) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(PayReviewTheme.primary)
+                .frame(width: 40, height: 40)
+                .background(PayReviewTheme.subtle, in: Circle())
+
+            Text(title).font(.subheadline.weight(.semibold))
+            Spacer()
+            control()
+                .foregroundStyle(PayReviewTheme.primaryText)
+        }
+    }
+
+    private func moneyWheelPicker(selection: Binding<Int>) -> some View {
+        Picker("金額", selection: selection) {
+            ForEach(moneyOptions, id: \.self) { value in
+                Text(Decimal(value).twdFormatted).tag(value)
+            }
+        }
+        .labelsHidden()
+        .pickerStyle(.wheel)
+        .frame(width: 138, height: 88)
+        .clipped()
+    }
+
+    private var moneyOptions: [Int] {
+        let minimum = otherPlannedExpenseTotal
+        let options = Array(stride(from: minimum, through: 100_000, by: 100))
+        return Array(Set(options + [draftPlannedExpenseTotal, draftFlexibleBudget])).sorted()
+    }
+
+    private var otherPlannedExpenseTotal: Int {
+        let total = setupStore.plannedExpenses
+            .dropFirst()
+            .reduce(Decimal.zero) { $0 + $1.amount }
+        return NSDecimalNumber(decimal: total).intValue
+    }
+
+    private func updatePlan() {
+        let trimmedGoalName = draftGoalName.trimmingCharacters(in: .whitespacesAndNewlines)
+        setupStore.goalName = trimmedGoalName.isEmpty ? setupStore.goalName : trimmedGoalName
+        setupStore.incomeCadence = draftIncomeCadence
+        setupStore.updatePlannedExpenseTotal(to: Decimal(draftPlannedExpenseTotal))
+        setupStore.flexibleBudget = Decimal(draftFlexibleBudget)
+        showsUpdatedPlan = true
+    }
+}
+
+private struct RecordsPrototypeView: View {
+    @ObservedObject var setupStore: SetupStore
+    @ObservedObject var flow: PayReviewFlowStore
+    @State private var showsAddRecord = false
+    @State private var selectedRecord: PayReviewRecord?
+
+    private var recordCalendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .autoupdatingCurrent
+        return calendar
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("紀錄").font(.largeTitle.bold())
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("本週已確認支出")
+                            .font(.subheadline.weight(.semibold))
+                        Text(confirmedExpenseTotal.twdFormatted)
+                            .font(.system(size: 42, weight: .bold, design: .rounded))
+                        Text("\(confirmedExpenseCount) 筆支出已記入計畫 · 轉帳不計入收支")
+                            .font(.footnote)
+                    }
+                    .foregroundStyle(PayReviewTheme.surface)
+                    .padding(20)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(PayReviewTheme.primary, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+
+                    Button("記錄一筆") { showsAddRecord = true }
+                        .buttonStyle(PayReviewPrimaryButtonStyle())
+
+                    LazyVStack(spacing: 12) {
+                        ForEach(Array(dailyRecordGroups.enumerated()), id: \.element.id) { index, group in
+                            DailyRecordsDisclosureGroup(
+                                group: group,
+                                calendar: recordCalendar,
+                                initiallyExpanded: index == 0,
+                                selectedRecord: $selectedRecord
+                            )
                         }
                     }
-
-                    Text("今天 · 7 月 17 日")
-                        .font(.headline)
-                        .foregroundStyle(PayReviewTheme.secondaryText)
-
-                    ForEach(filteredRecords) { record in
-                        Button { selectedRecord = record } label: {
-                            recordRow(record)
-                        }
-                        .buttonStyle(.plain)
-                    }
                 }
-                .padding(.horizontal, 24)
-                .padding(.top, 18)
-                .padding(.bottom, 100)
+                .padding(24)
             }
-            .background(PayReviewTheme.surface)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("新增紀錄", systemImage: "plus") { showsAddRecord = true }
-                        .labelStyle(.iconOnly)
-                        .buttonStyle(.borderedProminent)
-                }
-            }
-            .sheet(isPresented: $showsAddRecord) { AddRecordFlowView(flow: flow) }
+            .background(PayReviewTheme.background.ignoresSafeArea())
+            .sheet(isPresented: $showsAddRecord) { AddRecordFlowView(setupStore: setupStore, flow: flow) }
             .sheet(item: $selectedRecord) { record in RecordDetailView(record: record, flow: flow) }
         }
     }
 
+    private var dailyRecordGroups: [DailyRecordGroup] {
+        Dictionary(grouping: flow.records) { record in
+            recordCalendar.startOfDay(for: record.recordedAt)
+        }
+        .map { day, records in
+            DailyRecordGroup(day: day, records: records)
+        }
+        .sorted { $0.day > $1.day }
+    }
+
     private var confirmedExpenseTotal: Decimal {
         flow.records
-            .filter { $0.kind == .expense }
+            .filter { record in
+                guard let currentWeek = recordCalendar.dateInterval(of: .weekOfYear, for: .now) else {
+                    return false
+                }
+                return record.kind == .expense && currentWeek.contains(record.recordedAt)
+            }
             .reduce(Decimal.zero) { $0 + $1.amount }
     }
 
-    private var filteredRecords: [PayReviewRecord] {
-        switch filter {
-        case .all:
-            flow.records
-        case .transactions:
-            flow.records.filter { $0.kind != .deferred }
-        case .evaluations:
-            flow.records.filter { $0.detail.contains("評估") }
-        case .deferred:
-            flow.records.filter { $0.kind == .deferred }
+    private var confirmedExpenseCount: Int {
+        flow.records.filter { record in
+            guard let currentWeek = recordCalendar.dateInterval(of: .weekOfYear, for: .now) else {
+                return false
+            }
+            return record.kind == .expense && currentWeek.contains(record.recordedAt)
+        }.count
+    }
+}
+
+private struct DailyRecordGroup: Identifiable {
+    let day: Date
+    let records: [PayReviewRecord]
+
+    var id: Date { day }
+
+    var expenseTotal: Decimal {
+        records
+            .filter { $0.kind == .expense }
+            .reduce(Decimal.zero) { $0 + $1.amount }
+    }
+}
+
+private struct DailyRecordsDisclosureGroup: View {
+    let group: DailyRecordGroup
+    let calendar: Calendar
+    @Binding var selectedRecord: PayReviewRecord?
+    @State private var isExpanded: Bool
+
+    init(
+        group: DailyRecordGroup,
+        calendar: Calendar,
+        initiallyExpanded: Bool,
+        selectedRecord: Binding<PayReviewRecord?>
+    ) {
+        self.group = group
+        self.calendar = calendar
+        _selectedRecord = selectedRecord
+        _isExpanded = State(initialValue: initiallyExpanded)
+    }
+
+    var body: some View {
+        DisclosureGroup(isExpanded: $isExpanded) {
+            VStack(spacing: 0) {
+                Divider()
+                    .padding(.top, 14)
+
+                ForEach(Array(group.records.enumerated()), id: \.element.id) { index, record in
+                    Button { selectedRecord = record } label: { recordRow(record) }
+                        .buttonStyle(PayReviewPressButtonStyle())
+                        .padding(.vertical, 12)
+
+                    if index < group.records.count - 1 {
+                        Divider().padding(.leading, 52)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(dayTitle)
+                        .font(.title3.bold())
+                    Text("\(group.records.count) 筆紀錄")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 8)
+
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("本日開銷")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(group.expenseTotal.twdFormatted)
+                        .font(.headline)
+                        .foregroundStyle(PayReviewTheme.primaryText)
+                }
+            }
+            .contentShape(Rectangle())
         }
+        .tint(PayReviewTheme.primaryText)
+        .padding(18)
+        .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .accessibilityHint(isExpanded ? "收合當日紀錄" : "展開當日紀錄")
+    }
+
+    private var dayTitle: String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_Hant_TW")
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.setLocalizedDateFormatFromTemplate("MMMd")
+        let formattedDate = formatter.string(from: group.day)
+
+        if calendar.isDateInToday(group.day) {
+            return "今天 · \(formattedDate)"
+        }
+        if calendar.isDateInYesterday(group.day) {
+            return "昨天 · \(formattedDate)"
+        }
+        return formattedDate
     }
 
     private func recordRow(_ record: PayReviewRecord) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 5) {
-                Text(record.title).font(.headline)
-                Text(record.detail).font(.caption).foregroundStyle(PayReviewTheme.secondaryText)
+        HStack(spacing: 12) {
+            Image(systemName: recordIcon(for: record.kind))
+                .font(.body.weight(.semibold))
+                .foregroundStyle(recordIconColor(for: record.kind))
+                .frame(width: 40, height: 40)
+                .background(recordIconBackground(for: record.kind), in: Circle())
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(record.title).font(.subheadline.weight(.semibold))
+                Text(record.detail).font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
-            Text(record.kind == .deferred ? "不扣預算" : record.amount.twdFormatted)
-                .font(.subheadline.weight(.semibold))
+            VStack(alignment: .trailing, spacing: 3) {
+                Text(recordAmount(for: record)).font(.subheadline.weight(.semibold))
+                if record.kind == .deferred {
+                    Text("尚未記入")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(PayReviewTheme.secondaryText)
+                }
+            }
         }
-        .foregroundStyle(PayReviewTheme.primaryText)
-        .padding(.horizontal, 16)
-        .frame(maxWidth: .infinity, minHeight: 72)
-        .background(record.kind == .deferred ? PayReviewTheme.cautionSurface : PayReviewTheme.subtle, in: RoundedRectangle(cornerRadius: 20))
         .contentShape(Rectangle())
+    }
+
+    private func recordAmount(for record: PayReviewRecord) -> String {
+        switch record.kind {
+        case .expense: return "−\(record.amount.twdFormatted)"
+        case .income: return "+\(record.amount.twdFormatted)"
+        case .transfer: return record.amount.twdFormatted
+        case .deferred: return "晚點決定"
+        }
+    }
+
+    private func recordIcon(for kind: PayReviewRecord.Kind) -> String {
+        switch kind {
+        case .expense: return "arrow.up.right"
+        case .income: return "arrow.down.left"
+        case .transfer: return "arrow.left.arrow.right"
+        case .deferred: return "clock"
+        }
+    }
+
+    private func recordIconColor(for kind: PayReviewRecord.Kind) -> Color {
+        kind == .expense ? PayReviewTheme.primary : PayReviewTheme.primaryText
+    }
+
+    private func recordIconBackground(for kind: PayReviewRecord.Kind) -> Color {
+        switch kind {
+        case .expense: return PayReviewTheme.cautionSurface
+        case .income: return PayReviewTheme.safe.opacity(0.35)
+        case .transfer: return PayReviewTheme.subtle
+        case .deferred: return Color(.systemGray6)
+        }
     }
 }
 
 private struct AddRecordFlowView: View {
+    @ObservedObject var setupStore: SetupStore
     @ObservedObject var flow: PayReviewFlowStore
     @Environment(\.dismiss) private var dismiss
     @State private var type = 0
-    @State private var amount: Decimal = 699
+    @State private var amountInput = ""
     @State private var category = "帳單"
+    @State private var selectedPlannedExpenseID: UUID?
+    @State private var note = ""
     @State private var showsReview = false
     @State private var isConfirming = false
     @State private var confirmationID = UUID()
@@ -917,28 +1079,43 @@ private struct AddRecordFlowView: View {
         NavigationStack {
             Form {
                 Section("這次想留下哪一種紀錄？") {
-                    Picker("類型", selection: $type) { Text("支出").tag(0); Text("收入").tag(1); Text("轉帳").tag(2) }.pickerStyle(.segmented)
-                    Text(type == 2 ? "轉帳不會算成花費" : "正式紀錄會更新預算；試算本身不會").font(.footnote).foregroundStyle(.secondary)
+                    Picker("類型", selection: $type) { Text("支出").tag(0); Text("收入").tag(1) }
+                        .pickerStyle(.segmented)
                 }
-                Section(type == 0 ? "支出金額" : type == 1 ? "收入金額" : "轉帳金額") {
-                    TextField("金額", value: $amount, format: .payReviewTWD).keyboardType(.numberPad)
-                    if type != 2 { TextField("類別", text: $category) }
+                Section(type == 0 ? "支出金額" : "收入金額") {
+                    TextField("金額", text: $amountInput)
+                        .keyboardType(.decimalPad)
+                    TextField("類別", text: $category)
                 }
                 if type == 0 {
-                    Section("找到可能對應的預期支出") {
-                        Text("電信費 NT$699 · 7 月 20 日")
-                        Text("確認後會完成這筆預期支出，不會再次扣除預算").font(.footnote).foregroundStyle(.secondary)
+                    Section("固定預算") {
+                        Picker("選擇現有固定預算", selection: $selectedPlannedExpenseID) {
+                            Text("不使用固定預算").tag(nil as UUID?)
+                            ForEach(setupStore.plannedExpenses) { expense in
+                                Text("\(expense.name) · \(expense.amount.twdFormatted)")
+                                    .tag(expense.id as UUID?)
+                            }
+                        }
+                        .pickerStyle(.menu)
                     }
                 }
-                if type == 2 { Section { Text("這筆錢只是在自己的帳戶間移動，不計入收入或支出") } }
+                Section("備註") {
+                    TextField("新增備註（選填）", text: $note, axis: .vertical)
+                        .lineLimit(2...4)
+                }
                 Section {
                     Button("檢查後再記錄") { showsReview = true }
                         .buttonStyle(PayReviewPrimaryButtonStyle())
-                        .disabled(amount <= 0 || (type != 2 && category.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
+                        .disabled(amount <= 0 || category.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
                 .listRowBackground(Color.clear)
             }
-            .navigationTitle(type == 0 ? "新增支出" : type == 1 ? "新增收入" : "新增轉帳")
+            .onChange(of: selectedPlannedExpenseID) { _, id in
+                guard let expense = setupStore.plannedExpenses.first(where: { $0.id == id }) else { return }
+                category = expense.name
+                amountInput = String(NSDecimalNumber(decimal: expense.amount).int64Value)
+            }
+            .navigationTitle(type == 0 ? "新增支出" : "新增收入")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } } }
             .navigationDestination(isPresented: $showsReview) {
@@ -957,16 +1134,11 @@ private struct AddRecordFlowView: View {
             Section {
                 LabeledContent("類型", value: typeTitle)
                 LabeledContent("金額", value: amount.twdFormatted)
-                if type != 2 { LabeledContent("類別", value: category) }
+                LabeledContent("類別", value: category)
                 LabeledContent("日期", value: "今天")
             }
-            if type == 0 {
-                Section("預期支出配對") {
-                    Text("電信費 NT$699 · 7 月 20 日")
-                    Text("確認後會完成這筆預期支出，不會再次扣除預算。")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
+            if !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Section("備註") { Text(note) }
             }
             Section {
                 Button("確認並建立\(typeTitle)") {
@@ -982,15 +1154,19 @@ private struct AddRecordFlowView: View {
     }
 
     private var typeTitle: String {
-        type == 0 ? "支出" : type == 1 ? "收入" : "轉帳"
+        type == 0 ? "支出" : "收入"
+    }
+
+    private var amount: Decimal {
+        Decimal(string: amountInput) ?? .zero
     }
 
     private func confirmRecord() {
         guard !isConfirming else { return }
         isConfirming = true
-        let kind: PayReviewRecord.Kind = type == 0 ? .expense : type == 1 ? .income : .transfer
-        let title = type == 0 ? category : type == 1 ? "收入" : "帳戶轉帳"
-        let detail = type == 0 ? "\(category) · 已確認" : type == 1 ? "收入 · 已確認" : "錢包 → 銀行"
+        let kind: PayReviewRecord.Kind = type == 0 ? .expense : .income
+        let title = type == 0 ? category : "收入"
+        let detail = type == 0 ? "\(category) · 已確認" : "收入 · 已確認"
         flow.confirmRecord(
             confirmationID: confirmationID,
             title: title,
@@ -1018,7 +1194,7 @@ private struct RecordDetailView: View {
                         Label("尚未建立交易", systemImage: "clock")
                             .foregroundStyle(.secondary)
                     } else {
-                        Label("原型紀錄，尚未同步到雲端", systemImage: "internaldrive")
+                        Label("Firebase 雲端已確認", systemImage: "checkmark.circle.fill")
                             .foregroundStyle(PayReviewTheme.primary)
                     }
                 }
@@ -1058,50 +1234,54 @@ private struct RecordDetailView: View {
 }
 
 private struct SettingsPrototypeView: View {
-    @ObservedObject var authentication: AuthenticationTestViewModel
+    let embedsNavigationStack: Bool
     @State private var showsPlus = false
     @State private var showsSignOut = false
     @State private var showsDelete = false
     @State private var showsIntroduction = false
 
+    init(embedsNavigationStack: Bool = true) {
+        self.embedsNavigationStack = embedsNavigationStack
+    }
+
     var body: some View {
-        NavigationStack {
-            List {
-                Section("帳號與安全") {
-                    LabeledContent("帳號", value: authentication.authenticatedUser?.email ?? "已登入")
-                    Label("帳號狀態已確認", systemImage: "checkmark.circle.fill")
-                }
-                Section("訂閱與購買") { Button("管理方案、續訂與恢復購買") { showsPlus = true } }
-                Section("使用指南") {
-                    Button {
-                        showsIntroduction = true
-                    } label: {
-                        Label("重播動態介紹", systemImage: "play.rectangle")
-                    }
-                }
-                Section("隱私與資料") {
-                    NavigationLink("隱私權與資料使用") { policyView("隱私權與資料使用") }
-                    NavigationLink("匯出我的資料") { policyView("下載紀錄與目前設定") }
-                    Button("刪除帳號", role: .destructive) { showsDelete = true }
-                }
-                Section { Button("安全登出") { showsSignOut = true } }
+        Group {
+            if embedsNavigationStack {
+                NavigationStack { settingsContent }
+            } else {
+                settingsContent
             }
-            .navigationTitle("帳號與安全")
-            .sheet(isPresented: $showsPlus) { PlusOfferView() }
-            .sheet(isPresented: $showsSignOut) {
-                SafeSignOutView(
-                    signOut: {
-                        showsSignOut = false
-                        authentication.signOut()
-                    },
-                    cancel: { showsSignOut = false }
-                )
+        }
+    }
+
+    private var settingsContent: some View {
+        List {
+            Section("帳號與安全") {
+                LabeledContent("登入帳號", value: "已登入")
+                Label("Firebase 雲端已同步", systemImage: "checkmark.circle.fill")
             }
-            .sheet(isPresented: $showsDelete) { AccountDeletionPrototypeView { showsDelete = false } }
-            .fullScreenCover(isPresented: $showsIntroduction) {
-                OnboardingFlowView {
-                    showsIntroduction = false
+            Section("訂閱與購買") { Button("管理方案、續訂與恢復購買") { showsPlus = true } }
+            Section("使用指南") {
+                Button {
+                    showsIntroduction = true
+                } label: {
+                    Label("重播動態介紹", systemImage: "play.rectangle")
                 }
+            }
+            Section("隱私與資料") {
+                NavigationLink("隱私權與資料使用") { policyView("隱私權與資料使用") }
+                NavigationLink("匯出我的資料") { policyView("下載紀錄與目前設定") }
+                Button("刪除帳號", role: .destructive) { showsDelete = true }
+            }
+            Section { Button("安全登出") { showsSignOut = true } }
+        }
+        .navigationTitle("帳號與安全")
+        .sheet(isPresented: $showsPlus) { PlusOfferView() }
+        .sheet(isPresented: $showsSignOut) { SafeSignOutView { showsSignOut = false } }
+        .sheet(isPresented: $showsDelete) { AccountDeletionPrototypeView { showsDelete = false } }
+        .fullScreenCover(isPresented: $showsIntroduction) {
+            OnboardingFlowView {
+                showsIntroduction = false
             }
         }
     }
@@ -1144,8 +1324,8 @@ private struct AccountDeletionPrototypeView: View {
                     Toggle("若仍有未同步變更，我會再次確認是否永久捨棄", isOn: $confirmsUnsyncedChanges)
                 }
                 Section {
-                    Button("帳號刪除功能尚未完成", role: .destructive) {}
-                        .disabled(true)
+                    Button("重新驗證並繼續", role: .destructive) { cancel() }
+                        .disabled(!understandsSubscription || !confirmsUnsyncedChanges)
                     Button("先保留帳號", action: cancel)
                 }
             }
@@ -1156,18 +1336,17 @@ private struct AccountDeletionPrototypeView: View {
 }
 
 private struct SafeSignOutView: View {
-    let signOut: () -> Void
     let cancel: () -> Void
     var body: some View {
         NavigationStack {
             VStack(spacing: 22) {
                 ActivationMascot(size: 112)
                 Text("先讓紀錄安全到家，\n再跟這台裝置說再見").font(.largeTitle.bold()).multilineTextAlignment(.center)
-                Text("目前沒有連接中的正式財務寫入").font(.headline)
-                Text("登出後，需要再次使用 Email 或 Google 登入。").foregroundStyle(.secondary).multilineTextAlignment(.center)
-                Button("確認登出", action: signOut).buttonStyle(PayReviewPrimaryButtonStyle())
+                Text("還有 2 筆紀錄正在安全同步").font(.headline)
+                Text("完成後就能登出。失敗時會保留目前帳號，不會丟棄紀錄").foregroundStyle(.secondary).multilineTextAlignment(.center)
+                Button("繼續等待並安全登出", action: cancel).buttonStyle(PayReviewPrimaryButtonStyle())
                 Button("取消登出", action: cancel).buttonStyle(.bordered)
-                Text("正式 Firestore 寫入啟用後，這裡會先等待 pending writes。").font(.footnote).foregroundStyle(.secondary)
+                Text("等待上限 30 秒；可隨時取消").font(.footnote).foregroundStyle(.secondary)
             }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity).background(PayReviewTheme.background)
         }
     }
@@ -1201,9 +1380,4 @@ private struct PlusOfferView: View {
     private func plan(_ title: String, _ detail: String, _ selected: Bool) -> some View { VStack(alignment: .leading) { Text(title).font(.headline); Text(detail).font(.subheadline) }.padding().frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading).background(selected ? PayReviewTheme.subtle : Color(.systemBackground), in: RoundedRectangle(cornerRadius: 20)) }
 }
 
-#Preview {
-    PayReviewMainFlowView(
-        setupStore: SetupStore(),
-        authentication: AuthenticationTestViewModel()
-    )
-}
+#Preview { PayReviewMainFlowView(setupStore: SetupStore()) }
