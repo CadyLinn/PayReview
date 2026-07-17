@@ -110,9 +110,9 @@ PayReview 由 **PayReview Team** 設計與開發。
 
 | 成員 | 主要角色 | 負責範圍 |
 | --- | --- | --- |
-| Cady | PM、產品與 iOS 整合 | 產品規格、上線規劃、Onboarding、登入體驗、技術決策、專用 Skill 與跨功能整合 |
-| machshyi | UI/UX 與日常體驗 | Figma 對齊、Today、Plan、Records、日常財務互動與產品文件協作 |
-| eli_liao | Firebase、驗證與資料安全 | Authentication、Firestore、Security Rules、帳號狀態、後端流程與資料模型 |
+| Cady | TPM | 技術專案管理、開發時程、跨功能協調、技術決策、專用 Skill 與 Agentic AI 流程整合 |
+| Micheal（machshyi） | PM | 產品規格、需求排序、上線規劃、使用者流程、驗收條件與產品文件 |
+| eli_liao | Backend | Authentication、Firestore、Security Rules、API、後端流程、資料模型與資料安全 |
 
 所有成員共同負責 Agentic AI 任務拆解、輸出檢視、測試驗證與 Pull Request review。此分工依目前 commit authorship 與修改範圍整理，正式職稱及責任歸屬仍以團隊確認版本為準。
 
