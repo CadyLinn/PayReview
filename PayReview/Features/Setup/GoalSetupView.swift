@@ -29,16 +29,16 @@ struct GoalSetupView: View {
                 TextField(
                     "目標金額",
                     value: $store.goalAmount,
-                    format: .currency(code: "TWD")
+                    format: .payReviewTWD
                 )
-                .keyboardType(.decimalPad)
+                .keyboardType(.numberPad)
 
                 TextField(
                     "目前已存",
                     value: $store.savedAmount,
-                    format: .currency(code: "TWD")
+                    format: .payReviewTWD
                 )
-                .keyboardType(.decimalPad)
+                .keyboardType(.numberPad)
 
                 DatePicker(
                     "目標完成日期",

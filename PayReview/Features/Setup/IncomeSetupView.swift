@@ -41,10 +41,10 @@ struct IncomeSetupView: View {
                 TextField(
                     "收入金額",
                     value: $store.availableIncome,
-                    format: .currency(code: "TWD")
+                    format: .payReviewTWD
                 )
                 .font(.title2.weight(.bold))
-                .keyboardType(.decimalPad)
+                .keyboardType(.numberPad)
 
                 Stepper("每次調整 NT$500") {
                     store.adjustIncome(by: 500)

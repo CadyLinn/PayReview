@@ -12,7 +12,6 @@ private enum OnboardingPage: Int, CaseIterable, Identifiable {
 struct OnboardingFlowView: View {
     let completion: () -> Void
     let skip: () -> Void
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selection: OnboardingPage
 
     init(completion: @escaping () -> Void) {
@@ -32,60 +31,30 @@ struct OnboardingFlowView: View {
     }
 
     var body: some View {
-        ZStack {
-            PayReviewTheme.background.ignoresSafeArea()
-
-            if reduceMotion {
+        TabView(selection: $selection) {
+            ForEach(OnboardingPage.allCases) { page in
                 OnboardingDesignCanvas {
-                    pageContent(selection)
+                    pageContent(page)
                 }
-                .id(selection)
-                .transition(.opacity)
-                .gesture(reducedMotionSwipe)
-            } else {
-                TabView(selection: $selection) {
-                    ForEach(OnboardingPage.allCases) { page in
-                        OnboardingDesignCanvas {
-                            pageContent(page)
-                        }
-                        .tag(page)
-                    }
-                }
-                .tabViewStyle(.page(indexDisplayMode: .never))
-                .animation(PayReviewMotion.easeOut(PayReviewMotion.reveal), value: selection)
-                .background(PayReviewTheme.background)
-                .ignoresSafeArea()
+                .tag(page)
             }
         }
-    }
-
-    private var reducedMotionSwipe: some Gesture {
-        DragGesture(minimumDistance: 24)
-            .onEnded { value in
-                let nextValue: Int
-                if value.translation.width < -36 {
-                    nextValue = min(selection.rawValue + 1, OnboardingPage.allCases.count - 1)
-                } else if value.translation.width > 36 {
-                    nextValue = max(selection.rawValue - 1, 0)
-                } else {
-                    return
-                }
-                guard let next = OnboardingPage(rawValue: nextValue), next != selection else { return }
-                withAnimation(.easeOut(duration: 0.25)) { selection = next }
-            }
+        .tabViewStyle(.page(indexDisplayMode: .always))
+        .indexViewStyle(.page(backgroundDisplayMode: .always))
+        .background(PayReviewTheme.background.ignoresSafeArea())
     }
 
     @ViewBuilder
     private func pageContent(_ page: OnboardingPage) -> some View {
         switch page {
         case .futureInSight:
-            FutureInSightPage(selection: $selection, skip: skip, isActive: selection == page)
+            FutureInSightPage(skip: skip, isActive: selection == page)
         case .swipeDifference:
-            SwipeDifferencePage(selection: $selection, skip: skip, isActive: selection == page)
+            SwipeDifferencePage(skip: skip, isActive: selection == page)
         case .revealImpact:
-            RevealImpactPage(selection: $selection, skip: skip, isActive: selection == page)
+            RevealImpactPage(skip: skip, isActive: selection == page)
         case .personalRoute:
-            PersonalRoutePage(selection: $selection, completion: completion, skip: skip, isActive: selection == page)
+            PersonalRoutePage(completion: completion, skip: skip, isActive: selection == page)
         }
     }
 }
@@ -110,7 +79,6 @@ private struct OnboardingDesignCanvas<Content: View>: View {
 }
 
 private struct FutureInSightPage: View {
-    @Binding var selection: OnboardingPage
     let skip: () -> Void
     let isActive: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -145,7 +113,7 @@ private struct FutureInSightPage: View {
             FinanceSignal(title: "今天可用", value: "NT$680")
                 .position(x: 74.5, y: 180)
                 .payReviewSlideReveal(isActive: isActive, edge: .leading, delay: 0.28, distance: 96)
-            FinanceSignal(title: "日本旅遊", value: "11 個月")
+            FinanceSignal(title: "日本旅遊", value: "11月去")
                 .position(x: 318.5, y: 211)
                 .payReviewSlideReveal(isActive: isActive, edge: .trailing, delay: 0.38, distance: 96)
             FinanceSignal(title: "下一步", value: "先看影響")
@@ -161,23 +129,13 @@ private struct FutureInSightPage: View {
                 .position(x: 196.5, y: 478)
                 .payReviewSlideReveal(isActive: isActive, edge: .leading, delay: 0.50)
 
-            Text("在每次付款前，先看見今天的選擇會把你帶向哪裡")
+            Text("在每次付款前，\n先看見今天的選擇會把你帶向哪裡")
                 .font(.system(size: 16))
                 .foregroundStyle(PayReviewTheme.secondaryText)
                 .multilineTextAlignment(.center)
                 .frame(width: 317)
                 .position(x: 196.5, y: 548)
                 .payReviewSlideReveal(isActive: isActive, edge: .trailing, delay: 0.56)
-
-            onboardingCapsule("向左滑，看看記帳還能做到什麼　›") {
-                withAnimation(PayReviewMotion.easeOut(PayReviewMotion.reveal)) { selection = .swipeDifference }
-            }
-            .position(x: 196.5, y: 719)
-            .payReviewSlideReveal(isActive: isActive, edge: .leading, delay: 0.64)
-
-            PageIndicator(selection: selection)
-                .position(x: 196.5, y: 796)
-                .payReviewSlideReveal(isActive: isActive, edge: .bottom, delay: 0.70, distance: 24)
 
             skipButton(skip)
                 .payReviewSlideReveal(isActive: isActive, edge: .trailing, delay: 0.12, distance: 32)
@@ -192,14 +150,13 @@ private struct FutureInSightPage: View {
 }
 
 private struct SwipeDifferencePage: View {
-    @Binding var selection: OnboardingPage
     let skip: () -> Void
     let isActive: Bool
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             PayReviewTheme.background
-            onboardingHeader("01　不只回頭看", selection: $selection, previous: .futureInSight, skip: skip)
+            onboardingHeader("01　不只回頭看", skip: skip)
                 .payReviewSlideReveal(isActive: isActive, edge: .bottom, delay: 0.02, distance: 20)
 
             Text("記帳的下一步，是在花錢\n前先知道結果")
@@ -231,15 +188,6 @@ private struct SwipeDifferencePage: View {
                 .position(x: 230.5, y: 592)
                 .payReviewSlideReveal(isActive: isActive, edge: .trailing, delay: 0.36)
 
-            onboardingCapsule("繼續滑動，打開這筆錢的影響　›") {
-                withAnimation(PayReviewMotion.easeOut(PayReviewMotion.reveal)) { selection = .revealImpact }
-            }
-            .position(x: 196.5, y: 719)
-            .payReviewSlideReveal(isActive: isActive, edge: .leading, delay: 0.44)
-
-            PageIndicator(selection: selection)
-                .position(x: 196.5, y: 796)
-                .payReviewSlideReveal(isActive: isActive, edge: .bottom, delay: 0.50, distance: 24)
         }
     }
 
@@ -283,14 +231,13 @@ private struct SwipeDifferencePage: View {
 }
 
 private struct RevealImpactPage: View {
-    @Binding var selection: OnboardingPage
     let skip: () -> Void
     let isActive: Bool
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             PayReviewTheme.background
-            onboardingHeader("02　先揭曉，再決定", selection: $selection, previous: .swipeDifference, skip: skip)
+            onboardingHeader("02　先揭曉，再決定", skip: skip)
                 .payReviewSlideReveal(isActive: isActive, edge: .bottom, delay: 0.02, distance: 20)
 
             Text("同一筆 NT$1,000，\n可以先看三種未來")
@@ -334,15 +281,6 @@ private struct RevealImpactPage: View {
                 .position(x: 196.5, y: 624)
                 .payReviewSlideReveal(isActive: isActive, edge: .trailing, delay: 0.43)
 
-            onboardingCapsule("繼續滑動，看看它如何跟著你　›") {
-                withAnimation(PayReviewMotion.easeOut(PayReviewMotion.reveal)) { selection = .personalRoute }
-            }
-            .position(x: 196.5, y: 719)
-            .payReviewSlideReveal(isActive: isActive, edge: .leading, delay: 0.50)
-
-            PageIndicator(selection: selection)
-                .position(x: 196.5, y: 796)
-                .payReviewSlideReveal(isActive: isActive, edge: .bottom, delay: 0.56, distance: 24)
         }
     }
 
@@ -360,7 +298,6 @@ private struct RevealImpactPage: View {
 }
 
 private struct PersonalRoutePage: View {
-    @Binding var selection: OnboardingPage
     let completion: () -> Void
     let skip: () -> Void
     let isActive: Bool
@@ -368,7 +305,7 @@ private struct PersonalRoutePage: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             PayReviewTheme.background
-            onboardingHeader("03　這是一條屬於你的路", selection: $selection, previous: .revealImpact, skip: skip)
+            onboardingHeader("03　這是一條屬於你的路", skip: skip)
                 .payReviewSlideReveal(isActive: isActive, edge: .bottom, delay: 0.02, distance: 20)
 
             Text("PayReview 會把存錢目標，\n變成每天做得到的方向")
@@ -399,9 +336,6 @@ private struct PersonalRoutePage: View {
                 .buttonStyle(PayReviewPressButtonStyle())
                 .payReviewSlideReveal(isActive: isActive, edge: .trailing, delay: 0.36)
 
-            PageIndicator(selection: selection)
-                .position(x: 196.5, y: 796)
-                .payReviewSlideReveal(isActive: isActive, edge: .bottom, delay: 0.44, distance: 24)
         }
     }
 }
@@ -410,6 +344,7 @@ private struct RouteStage: View {
     let isActive: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var routeProgress: CGFloat = 0
+    @State private var revealStage = 0
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -432,12 +367,36 @@ private struct RouteStage: View {
             .trim(from: 0, to: reduceMotion ? 1 : routeProgress)
             .stroke(PayReviewTheme.safe, style: StrokeStyle(lineWidth: 4, lineCap: .round))
 
-            routePoint(x: 30, y: 226, label: "今天", value: "NT$680")
-            routePoint(x: 132, y: 150, label: "每週", value: "小任務")
-            routePoint(x: 229, y: 74, label: "目標", value: "2027/06/01")
+            animatedRoutePoint(
+                x: 30,
+                y: 226,
+                label: "今天",
+                value: "NT$680",
+                stage: 1
+            )
+            animatedRoutePoint(
+                x: 132,
+                y: 150,
+                label: "每週",
+                value: "小任務",
+                stage: 2
+            )
+            animatedRoutePoint(
+                x: 229,
+                y: 74,
+                label: "目標",
+                value: "2027/06/01",
+                stage: 3
+            )
 
-            mascot(size: 78)
-                .position(x: 297.5, y: 66)
+            mascot(size: 64)
+                .position(x: 292, y: 54)
+                .opacity(reduceMotion || revealStage >= 4 ? 1 : 0)
+                .scaleEffect(reduceMotion || revealStage >= 4 ? 1 : 0.84)
+                .offset(
+                    x: reduceMotion || revealStage >= 4 ? 0 : -18,
+                    y: reduceMotion || revealStage >= 4 ? 0 : 22
+                )
 
             Text("你的計畫會隨確認過的紀錄持續更新")
                 .font(.system(size: 13))
@@ -447,36 +406,48 @@ private struct RouteStage: View {
         }
         .frame(width: 345, height: 334)
         .clipShape(RoundedRectangle(cornerRadius: 32))
-        .onChange(of: isActive, initial: true) { _, active in
-            if reduceMotion {
+        .task(id: isActive) {
+            routeProgress = reduceMotion ? 1 : 0
+            revealStage = reduceMotion ? 4 : 0
+
+            guard isActive, !reduceMotion else { return }
+
+            await Task.yield()
+            withAnimation(PayReviewMotion.easeOut(0.9)) {
                 routeProgress = 1
-            } else if active {
-                routeProgress = 0
-                withAnimation(PayReviewMotion.easeOut(PayReviewMotion.reveal).delay(0.12)) {
-                    routeProgress = 1
-                }
-            } else {
-                routeProgress = 0
             }
+
+            guard await reveal(after: .milliseconds(120), stage: 1) else { return }
+            guard await reveal(after: .milliseconds(180), stage: 2) else { return }
+            guard await reveal(after: .milliseconds(180), stage: 3) else { return }
+            _ = await reveal(after: .milliseconds(180), stage: 4)
         }
     }
-}
 
-private struct PageIndicator: View {
-    let selection: OnboardingPage
+    private func animatedRoutePoint(
+        x: CGFloat,
+        y: CGFloat,
+        label: String,
+        value: String,
+        stage: Int
+    ) -> some View {
+        routePoint(x: x, y: y, label: label, value: value)
+            .opacity(reduceMotion || revealStage >= stage ? 1 : 0)
+            .scaleEffect(reduceMotion || revealStage >= stage ? 1 : 0.72)
+    }
 
-    var body: some View {
-        HStack(spacing: 14) {
-            ForEach(OnboardingPage.allCases) { page in
-                Circle()
-                    .fill(page == selection ? PayReviewTheme.secondaryText : Color.clear)
-                    .overlay(Circle().stroke(PayReviewTheme.secondaryText, lineWidth: 1))
-                    .frame(width: 10, height: 10)
-            }
+    private func reveal(after delay: Duration, stage: Int) async -> Bool {
+        do {
+            try await Task.sleep(for: delay)
+        } catch {
+            return false
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("介紹進度")
-        .accessibilityValue("第 \(selection.rawValue + 1) 頁，共 4 頁")
+
+        guard !Task.isCancelled else { return false }
+        withAnimation(.spring(duration: 0.42, bounce: 0.28)) {
+            revealStage = stage
+        }
+        return true
     }
 }
 
@@ -509,18 +480,6 @@ private func mascot(size: CGFloat) -> some View {
         .accessibilityLabel("PayReview 吉祥物")
 }
 
-private func onboardingCapsule(_ title: String, action: @escaping () -> Void) -> some View {
-    Button(action: action) {
-        Text(title)
-            .font(.system(size: 15, weight: .medium))
-            .foregroundStyle(PayReviewTheme.safe)
-            .frame(width: 345, height: 58, alignment: .leading)
-            .padding(.leading, 24)
-            .background(PayReviewTheme.darkRaised, in: Capsule())
-    }
-    .buttonStyle(PayReviewPressButtonStyle())
-}
-
 private func skipButton(_ completion: @escaping () -> Void) -> some View {
     Button("略過介紹", action: completion)
         .font(.system(size: 14, weight: .medium))
@@ -530,28 +489,10 @@ private func skipButton(_ completion: @escaping () -> Void) -> some View {
 }
 
 private func onboardingHeader(
-    _ label: String,
-    selection: Binding<OnboardingPage>,
-    previous: OnboardingPage,
+    _: String,
     skip: @escaping () -> Void
 ) -> some View {
     ZStack(alignment: .topLeading) {
-        Button {
-            withAnimation(PayReviewMotion.easeOut(PayReviewMotion.quick)) { selection.wrappedValue = previous }
-        } label: {
-            Image(systemName: "chevron.left")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(PayReviewTheme.primary)
-                .frame(width: 44, height: 44)
-                .background(Color(red: 240 / 255, green: 247 / 255, blue: 242 / 255), in: Circle())
-        }
-        .position(x: 34, y: 38)
-
-        Text(label)
-            .font(.system(size: 13, weight: .medium))
-            .foregroundStyle(PayReviewTheme.secondaryText)
-            .position(x: 179, y: 42)
-
         skipButton(skip)
     }
 }
@@ -602,6 +543,7 @@ private func routePoint(x: CGFloat, y: CGFloat, label: String, value: String) ->
         Text(value)
             .font(.system(size: 13, weight: .bold))
             .foregroundStyle(PayReviewTheme.surface)
+            .offset(y: -6)
     }
     .position(x: x, y: y)
 }

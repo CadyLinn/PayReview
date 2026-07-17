@@ -4,6 +4,8 @@ struct UnauthenticatedActivationView: View {
     @ObservedObject var viewModel: AuthenticationTestViewModel
     let replayIntroduction: () -> Void
     @State private var showsSignIn: Bool
+    @State private var showsDemo = false
+    @State private var authenticationIntent: AuthenticationIntent = .createAccount
 
     init(
         viewModel: AuthenticationTestViewModel,
@@ -16,16 +18,40 @@ struct UnauthenticatedActivationView: View {
     }
 
     var body: some View {
-        if showsSignIn {
-            PayReviewSignInView(viewModel: viewModel) {
+        if showsDemo {
+            DecisionDemoView(
+                backAction: {
+                    withAnimation(PayReviewMotion.easeOut(PayReviewMotion.quick)) {
+                        showsDemo = false
+                    }
+                },
+                createAccountAction: {
+                    authenticationIntent = .createAccount
+                    withAnimation(PayReviewMotion.easeOut(PayReviewMotion.navigation)) {
+                        showsDemo = false
+                        showsSignIn = true
+                    }
+                }
+            )
+            .transition(.move(edge: .trailing))
+        } else if showsSignIn {
+            PayReviewSignInView(viewModel: viewModel, intent: authenticationIntent) {
                 withAnimation(PayReviewMotion.easeOut(PayReviewMotion.quick)) { showsSignIn = false }
             }
             .transition(.move(edge: .trailing))
         } else {
             ValueHookView(
                 replayIntroduction: replayIntroduction,
-                continueAction: {
+                createAccountAction: {
+                    authenticationIntent = .createAccount
                     withAnimation(PayReviewMotion.easeOut(0.45)) { showsSignIn = true }
+                },
+                signInAction: {
+                    authenticationIntent = .signIn
+                    withAnimation(PayReviewMotion.easeOut(0.45)) { showsSignIn = true }
+                },
+                demoAction: {
+                    withAnimation(PayReviewMotion.easeOut(0.45)) { showsDemo = true }
                 }
             )
             .transition(.move(edge: .leading))
@@ -59,7 +85,9 @@ struct PersonalizedActivationView: View {
 
 private struct ValueHookView: View {
     let replayIntroduction: () -> Void
-    let continueAction: () -> Void
+    let createAccountAction: () -> Void
+    let signInAction: () -> Void
+    let demoAction: () -> Void
     @State private var isPresented = false
 
     var body: some View {
@@ -74,16 +102,16 @@ private struct ValueHookView: View {
 
                 Circle()
                     .fill(PayReviewTheme.subtle)
-                    .frame(width: 220, height: 220)
-                    .position(x: 196, y: 162)
+                    .frame(width: 196, height: 196)
+                    .position(x: 145, y: 174)
                     .payReviewDepthReveal(isActive: isPresented, delay: 0.02)
-                ActivationMascot(size: 176)
+                ActivationMascot(size: 152)
                     .modifier(PayReviewFloatingEffect())
-                    .position(x: 196, y: 162)
+                    .position(x: 145, y: 174)
                     .payReviewDepthReveal(isActive: isPresented, delay: 0.06)
                 SpeechBubble("讓每一次的紀錄，\n都幫助你做出更有意識的消費決定")
                     .frame(width: 190, height: 78)
-                    .position(x: 269, y: 244)
+                    .position(x: 292, y: 246)
                     .payReviewSlideReveal(isActive: isPresented, edge: .trailing, delay: 0.26)
 
                 Text("不要等到月底，")
@@ -115,16 +143,96 @@ private struct ValueHookView: View {
                     .position(x: 196.5, y: 528)
                     .payReviewSlideReveal(isActive: isPresented, edge: .trailing, delay: 0.50)
 
-                ActivationButton("建立我的用錢計畫", action: continueAction)
-                    .position(x: 196.5, y: 674)
+                ActivationButton("我已經有帳號", action: signInAction)
+                    .position(x: 196.5, y: 652)
                     .payReviewSlideReveal(isActive: isPresented, edge: .leading, delay: 0.58, distance: 110)
-                ActivationSecondaryButton("我已經有帳號", action: continueAction)
-                    .position(x: 196.5, y: 736)
+                ActivationSecondaryButton("建立我的用錢計畫", action: createAccountAction)
+                    .position(x: 196.5, y: 712)
                     .payReviewSlideReveal(isActive: isPresented, edge: .trailing, delay: 0.66, distance: 110)
+                Button("先看看範例結果", action: demoAction)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(PayReviewTheme.primary)
+                    .frame(width: 345, height: 44)
+                    .contentShape(Rectangle())
+                    .position(x: 196.5, y: 770)
+                    .payReviewSlideReveal(isActive: isPresented, edge: .bottom, delay: 0.72, distance: 28)
             }
         }
         .onAppear { isPresented = true }
         .onDisappear { isPresented = false }
+    }
+}
+
+private struct DecisionDemoView: View {
+    let backAction: () -> Void
+    let createAccountAction: () -> Void
+    @State private var isPresented = false
+
+    var body: some View {
+        ActivationDesignCanvas {
+            ZStack(alignment: .topLeading) {
+                PayReviewTheme.background
+
+                ActivationBackButton(action: backAction)
+                    .position(x: 34, y: 55)
+
+                Text("日本旅行範例")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(PayReviewTheme.primary)
+                    .position(x: 196.5, y: 58)
+
+                Text("今天花 NT$1,000，\n11 月還能去日本嗎？")
+                    .font(.system(size: 27, weight: .bold))
+                    .foregroundStyle(PayReviewTheme.primaryText)
+                    .frame(width: 345, alignment: .leading)
+                    .position(x: 196.5, y: 130)
+                    .payReviewSlideReveal(isActive: isPresented, edge: .leading, delay: 0.06)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("可以，旅行不用延後")
+                        .font(.system(size: 22, weight: .bold))
+                    Text("先留下 NT$320")
+                        .font(.system(size: 38, weight: .bold, design: .rounded))
+                }
+                .foregroundStyle(PayReviewTheme.primaryText)
+                .padding(22)
+                .frame(width: 345, height: 142, alignment: .leading)
+                .background(PayReviewTheme.cautionSurface, in: RoundedRectangle(cornerRadius: 24))
+                .position(x: 196.5, y: 260)
+                .payReviewDepthReveal(isActive: isPresented, delay: 0.18)
+
+                VStack(spacing: 14) {
+                    demoResultCard("旅行計畫維持不變")
+                    demoResultCard("接下來 4 天，每天少花 NT$80")
+                }
+                .frame(width: 345)
+                .position(x: 196.5, y: 440)
+                .payReviewSlideReveal(isActive: isPresented, edge: .bottom, delay: 0.26, distance: 54)
+
+                Text("這是示意，不是個人財務建議\n也不會保存資料")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(PayReviewTheme.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .frame(width: 345)
+                    .position(x: 196.5, y: 560)
+
+                ActivationButton("建立帳號，看看我的結果", action: createAccountAction)
+                    .position(x: 196.5, y: 650)
+                ActivationSecondaryButton("回到上一頁", action: backAction)
+                    .position(x: 196.5, y: 712)
+            }
+        }
+        .onAppear { isPresented = true }
+        .onDisappear { isPresented = false }
+    }
+
+    private func demoResultCard(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 18, weight: .semibold))
+            .foregroundStyle(PayReviewTheme.primaryText)
+            .padding(.horizontal, 18)
+            .frame(width: 345, height: 72, alignment: .leading)
+        .background(PayReviewTheme.surface, in: RoundedRectangle(cornerRadius: 18))
     }
 }
 
@@ -289,8 +397,8 @@ private struct GoalChoiceView: View {
             NavigationStack {
                 Form {
                     TextField("目標名稱", text: $store.goalName)
-                    TextField("目標金額", value: $store.goalAmount, format: .currency(code: "TWD"))
-                        .keyboardType(.decimalPad)
+                    TextField("目標金額", value: $store.goalAmount, format: .payReviewTWD)
+                        .keyboardType(.numberPad)
                     DatePicker("目標完成日期", selection: $store.targetDate, displayedComponents: .date)
                 }
                 .navigationTitle("調整目標")
@@ -389,7 +497,6 @@ struct ActivationDesignCanvas<Content: View>: View {
                 .scaleEffect(scale)
                 .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
         }
-        .ignoresSafeArea()
         .background(PayReviewTheme.surface.ignoresSafeArea())
     }
 }
@@ -467,11 +574,16 @@ struct ActivationButton: View {
     }
 
     var body: some View {
-        Button(title, action: action)
-            .font(.system(size: 17, weight: .semibold))
-            .foregroundStyle(PayReviewTheme.surface)
-            .frame(width: 345, height: 48)
-            .background(PayReviewTheme.primary, in: RoundedRectangle(cornerRadius: 12))
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(PayReviewTheme.surface)
+                .frame(width: 345, height: 48)
+                .background(PayReviewTheme.primary, in: RoundedRectangle(cornerRadius: 12))
+                .contentShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
     }
 }
 
@@ -485,17 +597,31 @@ struct ActivationSecondaryButton: View {
     }
 
     var body: some View {
-        Button(title, action: action)
-            .font(.system(size: 17, weight: .semibold))
-            .foregroundStyle(PayReviewTheme.primary)
-            .frame(width: 343, height: 46)
-            .background(PayReviewTheme.surface, in: RoundedRectangle(cornerRadius: 12))
-            .overlay { RoundedRectangle(cornerRadius: 12).stroke(Color(red: 203 / 255, green: 221 / 255, blue: 211 / 255)) }
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(PayReviewTheme.primary)
+                .frame(width: 343, height: 46)
+                .background(PayReviewTheme.surface, in: RoundedRectangle(cornerRadius: 12))
+                .overlay { RoundedRectangle(cornerRadius: 12).stroke(Color(red: 203 / 255, green: 221 / 255, blue: 211 / 255)) }
+                .contentShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
     }
 }
 
 #Preview("A1") {
-    ValueHookView(replayIntroduction: {}, continueAction: {})
+    ValueHookView(
+        replayIntroduction: {},
+        createAccountAction: {},
+        signInAction: {},
+        demoAction: {}
+    )
+}
+
+#Preview("Demo") {
+    DecisionDemoView(backAction: {}, createAccountAction: {})
 }
 
 #Preview("A3") {

@@ -1,5 +1,4 @@
 import Combine
-import AuthenticationServices
 import FirebaseAuth
 import Foundation
 
@@ -16,6 +15,10 @@ final class AuthenticationTestViewModel: ObservableObject {
 
     init() {
         authenticationService = AuthenticationService()
+    }
+
+    init(authenticationService: AuthenticationServicing) {
+        self.authenticationService = authenticationService
     }
 
     func stopObserving() {
@@ -41,17 +44,15 @@ final class AuthenticationTestViewModel: ObservableObject {
         })
     }
 
-    func configureAppleRequest(_ request: ASAuthorizationAppleIDRequest) {
-        do {
-            try authenticationService.configureAppleRequest(request)
-        } catch {
-            errorMessage = error.localizedDescription
+    func createAccount(email: String, password: String) async {
+        await perform { [authenticationService] in
+            try await authenticationService.createAccount(email: email, password: password)
         }
     }
 
-    func completeAppleSignIn(_ result: Result<ASAuthorization, Error>) async {
-        await perform {
-            try await self.authenticationService.completeAppleSignIn(result)
+    func signIn(email: String, password: String) async {
+        await perform { [authenticationService] in
+            try await authenticationService.signIn(email: email, password: password)
         }
     }
 

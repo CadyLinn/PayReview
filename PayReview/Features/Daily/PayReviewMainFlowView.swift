@@ -7,7 +7,7 @@ final class PayReviewFlowStore: ObservableObject {
     enum EvaluationSource { case first, today, comparison }
 
     @Published var selectedTab: Tab = .today
-    @Published var evaluationAmount: Decimal = 1_000
+    @Published var evaluationAmount: Decimal?
     @Published var evaluationCategory = "購物"
     @Published var evaluationSource: EvaluationSource = .first
     private var evaluationID = UUID()
@@ -15,13 +15,18 @@ final class PayReviewFlowStore: ObservableObject {
     private var deferredEvaluationIDs = Set<UUID>()
     private var confirmedRecordIDs = Set<UUID>()
     @Published var records: [PayReviewRecord] = [
-        PayReviewRecord(title: "電信費", detail: "帳單 · 已完成預期支出", amount: 699, kind: .expense),
         PayReviewRecord(title: "午餐", detail: "飲食 · 已確認", amount: 120, kind: .expense),
         PayReviewRecord(title: "購物 NT$1,000", detail: "已評估 · 晚點決定", amount: 0, kind: .deferred),
         PayReviewRecord(title: "帳戶轉帳", detail: "錢包 → 銀行", amount: 3_000, kind: .transfer)
     ]
 
-    func beginEvaluation(source: EvaluationSource, amount: Decimal = 1_000, category: String = "購物") {
+    var evaluationAmountValue: Decimal { evaluationAmount ?? 0 }
+
+    var confirmedExpenseTotal: Decimal {
+        records.filter { $0.kind == .expense }.reduce(Decimal.zero) { $0 + $1.amount }
+    }
+
+    func beginEvaluation(source: EvaluationSource, amount: Decimal? = nil, category: String = "購物") {
         evaluationID = UUID()
         evaluationSource = source
         evaluationAmount = amount
@@ -30,6 +35,7 @@ final class PayReviewFlowStore: ObservableObject {
 
     @discardableResult
     func confirmEvaluatedPurchase() -> Bool {
+        guard let evaluationAmount, evaluationAmount > 0 else { return false }
         guard confirmedEvaluationIDs.insert(evaluationID).inserted else { return false }
         let title = evaluationCategory == "購物" ? "評估後購買" : evaluationCategory
         records.insert(
@@ -41,6 +47,7 @@ final class PayReviewFlowStore: ObservableObject {
 
     @discardableResult
     func deferCurrentEvaluation() -> Bool {
+        guard let evaluationAmount, evaluationAmount > 0 else { return false }
         guard deferredEvaluationIDs.insert(evaluationID).inserted else { return false }
         records.insert(
             PayReviewRecord(
@@ -52,6 +59,28 @@ final class PayReviewFlowStore: ObservableObject {
             at: 0
         )
         return true
+    }
+
+    @discardableResult
+    func completePlannedExpense(_ expense: PlannedExpenseDraft) -> Bool {
+        guard confirmedRecordIDs.insert(expense.id).inserted else { return false }
+        records.insert(
+            PayReviewRecord(
+                title: expense.name,
+                detail: "帳單 · 已完成預期支出",
+                amount: expense.amount,
+                kind: .expense
+            ),
+            at: 0
+        )
+        return true
+    }
+
+    func reopenPlannedExpense(_ expense: PlannedExpenseDraft) {
+        confirmedRecordIDs.remove(expense.id)
+        records.removeAll {
+            $0.title == expense.name && $0.detail == "帳單 · 已完成預期支出"
+        }
     }
 
     @discardableResult
@@ -131,6 +160,10 @@ private struct TodayPrototypeView: View {
         var id: Self { self }
     }
 
+    private var safeToSpend: Decimal {
+        max(0, setupStore.flexibleBudget - flow.confirmedExpenseTotal)
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -150,8 +183,8 @@ private struct TodayPrototypeView: View {
 
                     VStack(alignment: .leading, spacing: 6) {
                         Text("今天約可安心花").font(.subheadline.weight(.semibold))
-                        Text("NT$680").font(.system(size: 44, weight: .bold, design: .rounded))
-                        Text("已預留生活支出與\(setupStore.goalName)最低存款").font(.footnote)
+                        Text(safeToSpend.twdFormatted).font(.system(size: 44, weight: .bold, design: .rounded))
+                        Text("已扣除目前確認的支出；金額為估算").font(.footnote)
                     }
                     .foregroundStyle(PayReviewTheme.surface)
                     .padding(20)
@@ -222,8 +255,10 @@ private struct TodayPrototypeView: View {
         return Button {
             if isApproved {
                 approvedExpenseIDs.remove(expense.id)
+                flow.reopenPlannedExpense(expense)
             } else {
                 approvedExpenseIDs.insert(expense.id)
+                flow.completePlannedExpense(expense)
             }
         } label: {
             HStack(spacing: 12) {
@@ -359,9 +394,9 @@ private struct EvaluationInputPrototypeView: View {
 
                 MascotSpeechView(message: "不用一次想得很精準，之後都能調整\n這一步只是在幫你看清影響")
 
-                Button("查看 \(flow.evaluationAmount.twdFormatted) 的影響", action: continueAction)
+                Button("查看 \(flow.evaluationAmountValue.twdFormatted) 的影響", action: continueAction)
                     .buttonStyle(PayReviewPrimaryButtonStyle())
-                    .disabled(flow.evaluationAmount <= 0)
+                    .disabled(flow.evaluationAmountValue <= 0)
             }
             .padding(24)
         }
@@ -380,7 +415,7 @@ private struct DecisionCardPrototypeView: View {
     @State private var showsPlus = false
     @State private var revealStep = 0
 
-    private var overage: Decimal { max(0, flow.evaluationAmount - 680) }
+    private var overage: Decimal { max(0, flow.evaluationAmountValue - 680) }
 
     var body: some View {
         ScrollView {
@@ -396,7 +431,7 @@ private struct DecisionCardPrototypeView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(overage > 0 ? "超出目前可用額度" : "仍在目前可用額度內")
                         .font(.subheadline.weight(.semibold))
-                    Text(overage > 0 ? overage.twdFormatted : (680 - flow.evaluationAmount).twdFormatted)
+                    Text(overage > 0 ? overage.twdFormatted : (680 - flow.evaluationAmountValue).twdFormatted)
                         .font(.system(size: 38, weight: .bold, design: .rounded))
                 }
                 .padding(18)
@@ -405,7 +440,7 @@ private struct DecisionCardPrototypeView: View {
                 .opacity(revealStep >= 2 ? 1 : 0)
                 .offset(y: revealStep >= 2 ? 0 : 18)
 
-                resultCard("預算", overage > 0 ? "本週彈性空間不足 \(overage.twdFormatted)" : "買完仍保留 \((680 - flow.evaluationAmount).twdFormatted)")
+                resultCard("預算", overage > 0 ? "本週彈性空間不足 \(overage.twdFormatted)" : "買完仍保留 \((680 - flow.evaluationAmountValue).twdFormatted)")
                     .opacity(revealStep >= 3 ? 1 : 0)
                     .offset(y: revealStep >= 3 ? 0 : 18)
                 resultCard("目標", overage > 0 ? "若不調整其他支出，預估延後 4 天" : "使用彈性預算支付，目標日期不變")
@@ -430,7 +465,7 @@ private struct DecisionCardPrototypeView: View {
                     .foregroundStyle(.secondary)
 
                 HStack {
-                    Text("\(flow.evaluationAmount.twdFormatted) · \(flow.evaluationCategory)")
+                    Text("\(flow.evaluationAmountValue.twdFormatted) · \(flow.evaluationCategory)")
                     Spacer()
                     Button("看看完整 Plus 功能") { showsPlus = true }
                 }
@@ -487,7 +522,7 @@ private struct EvaluatedExpensePrototypeView: View {
             }
             Section("日期") { Text("今天 · 7 月 17 日") }
             Section("已從剛才的評估帶入") {
-                Text("預計花費 \(flow.evaluationAmount.twdFormatted) · 類別：\(flow.evaluationCategory)")
+                Text("預計花費 \(flow.evaluationAmountValue.twdFormatted) · 類別：\(flow.evaluationCategory)")
                 Text("金額與類別都能修改；確認前不會更新正式預算")
                     .font(.footnote).foregroundStyle(.secondary)
             }
@@ -511,13 +546,13 @@ private struct ConfirmEvaluatedPurchaseView: View {
                 Text("確認後，才會更新你的正式紀錄").foregroundStyle(.secondary)
             }
             Section {
-                LabeledContent("評估後購買", value: "− \(flow.evaluationAmount.twdFormatted)")
+                LabeledContent("評估後購買", value: "− \(flow.evaluationAmountValue.twdFormatted)")
                 LabeledContent("類別", value: flow.evaluationCategory)
                 LabeledContent("日期", value: "2026 年 7 月 17 日")
                 LabeledContent("標籤", value: "評估帶入")
             }
             Section("確認後會發生") {
-                Label("建立支出 \(flow.evaluationAmount.twdFormatted)", systemImage: "checkmark")
+                Label("建立支出 \(flow.evaluationAmountValue.twdFormatted)", systemImage: "checkmark")
                 Label("套用類別「\(flow.evaluationCategory)」", systemImage: "checkmark")
                 Label("更新正式預算並等待 Firebase 同步", systemImage: "checkmark")
             }
@@ -540,9 +575,17 @@ private struct ConfirmEvaluatedPurchaseView: View {
 }
 
 private struct ComparisonLabView: View {
+    private enum Plan: String {
+        case a = "A"
+        case b = "B"
+
+        var amount: Decimal { self == .a ? 960 : 1_150 }
+    }
+
     @ObservedObject var flow: PayReviewFlowStore
     let dismiss: () -> Void
     @State private var evaluatesPlan = false
+    @State private var selectedPlan: Plan = .a
 
     var body: some View {
         NavigationStack {
@@ -550,15 +593,15 @@ private struct ComparisonLabView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("折扣高，不一定更符合你的計畫").font(.title.bold())
                     Text("同時看實付、買進的份量，以及對目標的機會成本").foregroundStyle(.secondary)
-                    comparisonCard("A · 單件購買", "實付 NT$960", "折扣 NT$100\n只買現在需要的", "目標日期不變", highlighted: true)
+                    comparisonCard(plan: .a, "A · 單件購買", "實付 NT$960", "折扣 NT$100\n只買現在需要的", "目標日期不變")
                         .payReviewEntrance(delay: 0.08)
-                    comparisonCard("B · 折扣組合", "實付 NT$1,150", "折扣 NT$300\n需多買未規劃品項", "預估延後 5 天", highlighted: false)
+                    comparisonCard(plan: .b, "B · 折扣組合", "實付 NT$1,150", "折扣 NT$300\n需多買未規劃品項", "預估延後 5 天")
                         .payReviewEntrance(delay: 0.16)
                     Text("方案 B 折扣較大，但多出的支出會占用旅遊基金進度")
                         .font(.subheadline.weight(.semibold))
                         .padding().background(PayReviewTheme.cautionSurface, in: RoundedRectangle(cornerRadius: 18))
-                    Button("用方案 A 進行評估") {
-                        flow.beginEvaluation(source: .comparison, amount: 960, category: "購物")
+                    Button("用方案 \(selectedPlan.rawValue) 進行評估") {
+                        flow.beginEvaluation(source: .comparison, amount: selectedPlan.amount, category: "購物")
                         evaluatesPlan = true
                     }
                     .buttonStyle(PayReviewPrimaryButtonStyle())
@@ -582,19 +625,42 @@ private struct ComparisonLabView: View {
         }
     }
 
-    private func comparisonCard(_ title: String, _ price: String, _ detail: String, _ impact: String, highlighted: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title).font(.caption.bold()).foregroundStyle(PayReviewTheme.primary)
-            Text(price).font(.title.bold())
-            Text(detail).font(.subheadline)
-            Divider()
-            Text(impact).font(.headline)
+    private func comparisonCard(
+        plan: Plan,
+        _ title: String,
+        _ price: String,
+        _ detail: String,
+        _ impact: String
+    ) -> some View {
+        Button {
+            selectedPlan = plan
+        } label: {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text(title).font(.caption.bold()).foregroundStyle(PayReviewTheme.primary)
+                    Spacer()
+                    Image(systemName: selectedPlan == plan ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(PayReviewTheme.primary)
+                }
+                Text(price).font(.title.bold())
+                Text(detail).font(.subheadline)
+                Divider()
+                Text(impact).font(.headline)
+            }
+            .foregroundStyle(PayReviewTheme.primaryText)
+            .padding(18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(selectedPlan == plan ? PayReviewTheme.subtle : Color(.systemBackground), in: RoundedRectangle(cornerRadius: 24))
+            .overlay {
+                if selectedPlan == plan {
+                    RoundedRectangle(cornerRadius: 24).stroke(PayReviewTheme.primary, lineWidth: 2)
+                }
+            }
         }
-        .padding(18)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(highlighted ? PayReviewTheme.subtle : Color(.systemBackground), in: RoundedRectangle(cornerRadius: 24))
-        .overlay { if highlighted { RoundedRectangle(cornerRadius: 24).stroke(PayReviewTheme.primary, lineWidth: 2) } }
-        .payReviewInteractiveTilt(maximumAngle: 7, focusedScale: highlighted ? 1.035 : 1.02)
+        .buttonStyle(.plain)
+        .accessibilityLabel("選擇方案 \(plan.rawValue)，\(price)")
+        .accessibilityAddTraits(selectedPlan == plan ? .isSelected : [])
+        .payReviewInteractiveTilt(maximumAngle: 7, focusedScale: selectedPlan == plan ? 1.035 : 1.02)
     }
 }
 
@@ -1190,7 +1256,10 @@ private struct SettingsPrototypeView: View {
 
     private var settingsContent: some View {
         List {
-            Section("帳號與安全") { LabeledContent("Apple ID", value: "已登入"); Label("Firebase 雲端已同步", systemImage: "checkmark.circle.fill") }
+            Section("帳號與安全") {
+                LabeledContent("登入帳號", value: "已登入")
+                Label("Firebase 雲端已同步", systemImage: "checkmark.circle.fill")
+            }
             Section("訂閱與購買") { Button("管理方案、續訂與恢復購買") { showsPlus = true } }
             Section("使用指南") {
                 Button {
@@ -1246,7 +1315,7 @@ private struct AccountDeletionPrototypeView: View {
                         .foregroundStyle(.secondary)
                 }
                 Section("刪除流程") {
-                    Label("重新驗證 Apple ID", systemImage: "person.badge.key")
+                    Label("使用目前登入方式重新驗證", systemImage: "person.badge.key")
                     Label("等待待同步紀錄，最多 30 秒", systemImage: "arrow.triangle.2.circlepath")
                     Label("建立安全刪除工作並清除本機資料", systemImage: "lock.shield")
                 }

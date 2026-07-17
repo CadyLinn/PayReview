@@ -119,8 +119,8 @@ private struct EvaluationInputView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("預計花費", value: $amount, format: .currency(code: "TWD"))
-                        .keyboardType(.decimalPad)
+                    TextField("預計花費", value: $amount, format: .payReviewTWD)
+                        .keyboardType(.numberPad)
                 } header: {
                     Text("正在考慮花錢嗎？")
                 } footer: {
