@@ -2,6 +2,7 @@ import Combine
 import Foundation
 
 enum IncomeCadence: String, CaseIterable, Identifiable {
+    case daily = "每日"
     case monthly = "每月"
     case biweekly = "每兩週"
     case weekly = "每週"
@@ -46,6 +47,16 @@ final class SetupStore: ObservableObject {
 
     var plannedExpenseTotal: Decimal {
         plannedExpenses.reduce(Decimal.zero) { $0 + $1.amount }
+    }
+
+    func updatePlannedExpenseTotal(to total: Decimal) {
+        guard !plannedExpenses.isEmpty else {
+            plannedExpenses = [PlannedExpenseDraft(name: "必要支出", amount: max(0, total))]
+            return
+        }
+
+        let otherExpenses = plannedExpenses.dropFirst().reduce(Decimal.zero) { $0 + $1.amount }
+        plannedExpenses[0].amount = max(0, total - otherExpenses)
     }
 
     func adjustIncome(by amount: Decimal) {

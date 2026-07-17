@@ -9,23 +9,13 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userID;
     }
 
-    function hasActiveAccount(userID) {
-      return exists(/databases/$(database)/documents/accountStates/$(userID))
-        && get(/databases/$(database)/documents/accountStates/$(userID)).data.status == 'active';
-    }
-
-    match /accountStates/{userID} {
-      allow read: if ownsAccount(userID);
-      allow write: if false;
-    }
-
     match /deletionRequests/{requestID} {
       allow read: if isSignedIn() && resource.data.userID == request.auth.uid;
       allow write: if false;
     }
 
     match /users/{userID}/{document=**} {
-      allow read, write: if ownsAccount(userID) && hasActiveAccount(userID);
+      allow read, write: if ownsAccount(userID);
     }
   }
 }

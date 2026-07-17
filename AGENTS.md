@@ -162,11 +162,11 @@ Tests
 - Scope every Firestore read and write to the authenticated `uid`.
 - Use repository protocols so views never call Firebase SDKs directly.
 - Do not implement CloudKit or a second financial synchronization source.
-- Allow offline optimistic writes only as pending UI state. On reconnect, Security Rules must evaluate the live server-owned account state; rejected writes must roll back optimistic state and show a recoverable error.
+- Allow offline optimistic writes only as pending UI state. On reconnect, Security Rules must evaluate the live Firebase Authentication session; rejected writes must roll back optimistic state and show a recoverable error.
 - For ordinary account switching, require network access and successful `waitForPendingWrites` with a 30-second maximum and user cancellation; on timeout, cancellation, terminal error, or remaining writes, cancel the switch and keep the current account active. Never silently discard confirmed financial actions to complete a switch.
 - Define retry, conflict, deletion propagation, pending-write, and reconnect behavior.
 - Make writes idempotent so offline retries cannot create duplicate transactions or deductions.
-- Require a server-owned `active` account state before any user data write; missing, unreadable, `deleting`, or `deleted` state must fail closed. Bootstrap state only from the authenticated token `uid`, never a caller-supplied ID, and never overwrite or reactivate `deleting` or `deleted`.
+- Require Firebase Authentication before any user data read or write, and scope every access to the authenticated token `uid`. Do not provide anonymous authentication or guest mode.
 - Clear user-scoped Firestore cache and sensitive local state after account deletion and before a different user can use the same installation.
 
 ## 9. Authentication, privacy, and permissions
@@ -253,7 +253,7 @@ Feature and integration tests must cover:
 - Purchase, defer, skip, and adjust-plan flows.
 - Data export and account deletion entry points.
 - Sign in with Apple reauthentication and authorization revocation, explicit confirmation before discarding unsynced data, deletion-tombstone enforcement against stale tokens and offline retries, durable backend-job continuation after client sign-out, recursive cloud-data deletion, Firebase Authentication deletion, local-cache clearing, partial-failure recovery, and idempotent retry.
-- Network loss before and after tombstone creation, rejected optimistic-write rollback, cache-clear failure blocking a new account session, and attempted recreation of a deleted account state.
+- Network loss during account deletion, rejected optimistic-write rollback, cache-clear failure blocking a new account session, and attempted recreation of a deleted account.
 - Pending-write success, terminal error, user cancellation, and 30-second timeout branches for both deletion and ordinary account switching.
 - Subscription purchase, restore, expiry, and entitlement refresh.
 - Reduce Motion and critical accessibility paths.
