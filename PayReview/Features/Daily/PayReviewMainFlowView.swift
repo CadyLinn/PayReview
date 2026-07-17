@@ -645,32 +645,123 @@ private struct RecordsPrototypeView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    VStack(alignment: .leading) {
-                        Text("本週已確認支出").font(.caption)
-                        Text("NT$2,430").font(.title.bold())
-                        Text("轉帳不計入收支 · 1 筆待同步").font(.footnote).foregroundStyle(.secondary)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("紀錄").font(.largeTitle.bold())
+                        Text("最近發生了什麼？你做了哪些選擇？")
+                            .font(.subheadline)
+                            .foregroundStyle(PayReviewTheme.secondaryText)
                     }
-                }
-                Section("今天 · 7 月 17 日") {
-                    ForEach(flow.records) { record in
-                        Button { selectedRecord = record } label: { recordRow(record) }.buttonStyle(.plain)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("本週已確認支出")
+                            .font(.subheadline.weight(.semibold))
+                        Text(confirmedExpenseTotal.twdFormatted)
+                            .font(.system(size: 42, weight: .bold, design: .rounded))
+                        Text("\(confirmedExpenseCount) 筆支出已記入計畫 · 轉帳不計入收支")
+                            .font(.footnote)
                     }
+                    .foregroundStyle(PayReviewTheme.surface)
+                    .padding(20)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(PayReviewTheme.primary, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+
+                    Button("記錄一筆") { showsAddRecord = true }
+                        .buttonStyle(PayReviewPrimaryButtonStyle())
+
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack {
+                            Text("今天 · 7 月 17 日").font(.title3.bold())
+                            Spacer()
+                            Text("\(flow.records.count) 筆").font(.caption).foregroundStyle(.secondary)
+                        }
+
+                        ForEach(Array(flow.records.enumerated()), id: \.element.id) { index, record in
+                            Button { selectedRecord = record } label: { recordRow(record) }
+                                .buttonStyle(PayReviewPressButtonStyle())
+
+                            if index < flow.records.count - 1 {
+                                Divider().padding(.leading, 52)
+                            }
+                        }
+                    }
+                    .padding(18)
+                    .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+
+                    MascotSpeechView(message: "紀錄不是檢討，是幫你看見下一步")
                 }
+                .padding(24)
             }
-            .navigationTitle("紀錄")
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("新增", systemImage: "plus") { showsAddRecord = true } } }
+            .background(PayReviewTheme.background.ignoresSafeArea())
             .sheet(isPresented: $showsAddRecord) { AddRecordFlowView(flow: flow) }
             .sheet(item: $selectedRecord) { record in RecordDetailView(record: record, flow: flow) }
         }
     }
 
+    private var confirmedExpenseTotal: Decimal {
+        flow.records
+            .filter { $0.kind == .expense }
+            .reduce(Decimal.zero) { $0 + $1.amount }
+    }
+
+    private var confirmedExpenseCount: Int {
+        flow.records.filter { $0.kind == .expense }.count
+    }
+
     private func recordRow(_ record: PayReviewRecord) -> some View {
-        HStack {
-            VStack(alignment: .leading) { Text(record.title).font(.headline); Text(record.detail).font(.caption).foregroundStyle(.secondary) }
+        HStack(spacing: 12) {
+            Image(systemName: recordIcon(for: record.kind))
+                .font(.body.weight(.semibold))
+                .foregroundStyle(recordIconColor(for: record.kind))
+                .frame(width: 40, height: 40)
+                .background(recordIconBackground(for: record.kind), in: Circle())
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(record.title).font(.subheadline.weight(.semibold))
+                Text(record.detail).font(.caption).foregroundStyle(.secondary)
+            }
             Spacer()
-            Text(record.kind == .deferred ? "不扣預算" : record.amount.twdFormatted).font(.subheadline.weight(.semibold))
+            VStack(alignment: .trailing, spacing: 3) {
+                Text(recordAmount(for: record)).font(.subheadline.weight(.semibold))
+                if record.kind == .deferred {
+                    Text("尚未記入")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(PayReviewTheme.secondaryText)
+                }
+            }
+        }
+        .contentShape(Rectangle())
+    }
+
+    private func recordAmount(for record: PayReviewRecord) -> String {
+        switch record.kind {
+        case .expense: return "−\(record.amount.twdFormatted)"
+        case .income: return "+\(record.amount.twdFormatted)"
+        case .transfer: return record.amount.twdFormatted
+        case .deferred: return "晚點決定"
+        }
+    }
+
+    private func recordIcon(for kind: PayReviewRecord.Kind) -> String {
+        switch kind {
+        case .expense: return "arrow.up.right"
+        case .income: return "arrow.down.left"
+        case .transfer: return "arrow.left.arrow.right"
+        case .deferred: return "clock"
+        }
+    }
+
+    private func recordIconColor(for kind: PayReviewRecord.Kind) -> Color {
+        kind == .expense ? PayReviewTheme.primary : PayReviewTheme.primaryText
+    }
+
+    private func recordIconBackground(for kind: PayReviewRecord.Kind) -> Color {
+        switch kind {
+        case .expense: return PayReviewTheme.cautionSurface
+        case .income: return PayReviewTheme.safe.opacity(0.35)
+        case .transfer: return PayReviewTheme.subtle
+        case .deferred: return Color(.systemGray6)
         }
     }
 }
