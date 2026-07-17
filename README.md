@@ -4,17 +4,15 @@
 
 ### 中文
 
-PayReview 是一款付款前的個人財務決策工具，協助使用者在消費發生前理解實際價格、預算變化與目標影響，並提供可以維持原有計畫的調整方案。PayReview 不替使用者決定是否購買，而是讓每一次選擇都有清楚、可計算的依據。
+PayReview 在付款前呈現消費的實際價格、預算與目標影響，並提供可行的調整方案，幫助你清楚選擇、不偏離原有財務計畫。
 
 > 花錢前，先算價格與影響。
 
 ### English
 
-PayReview is a pre-spend personal finance decision tool that helps people understand a purchase's real cost, budget impact, and effect on financial goals before they pay. It also offers practical recovery options for staying on track. PayReview does not decide whether someone should buy; it provides clear, calculated information so every decision can be made with confidence.
+See each purchase's real cost, budget and goal impact, with practical ways to stay on track.
 
 > Before you spend, understand the price and its impact.
-
-目前專案處於產品原型與 MVP 開發階段，介面、財務規則及雲端架構仍會持續調整。
 
 ## 官方資源
 [查看 PayReview Student Creator 專案頁](https://studentcreator.tw/apps/9220dab4-cc7a-4445-94be-c1ce51984231?event=848c34a8-d4da-4f02-9687-4d19335865cf)
@@ -110,6 +108,8 @@ skills/           PayReview 專用 Agent 工作流程
 - Google Sign-In 所需的 iOS URL Scheme 與 Firebase Authentication 設定
 
 請勿將個人測試資料、憑證、權杖、產生的建置檔案或 Xcode `xcuserdata` 提交到版本庫。
+
+目前專案處於產品原型與 MVP 開發階段，介面、財務規則及雲端架構仍會持續調整。
 
 ## 開始開發
 
