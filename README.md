@@ -14,8 +14,6 @@ See each purchase's real cost, budget and goal impact, with practical ways to st
 
 > Before you spend, understand the price and its impact.
 
-目前專案處於產品原型與 MVP 開發階段，介面、財務規則及雲端架構仍會持續調整。
-
 ## 官方資源
 [查看 PayReview Student Creator 專案頁](https://studentcreator.tw/apps/9220dab4-cc7a-4445-94be-c1ce51984231?event=848c34a8-d4da-4f02-9687-4d19335865cf)
 
@@ -110,6 +108,8 @@ skills/           PayReview 專用 Agent 工作流程
 - Google Sign-In 所需的 iOS URL Scheme 與 Firebase Authentication 設定
 
 請勿將個人測試資料、憑證、權杖、產生的建置檔案或 Xcode `xcuserdata` 提交到版本庫。
+
+目前專案處於產品原型與 MVP 開發階段，介面、財務規則及雲端架構仍會持續調整。
 
 ## 開始開發
 
