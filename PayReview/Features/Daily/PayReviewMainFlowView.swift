@@ -3,7 +3,7 @@ import SwiftUI
 
 @MainActor
 final class PayReviewFlowStore: ObservableObject {
-    enum Tab: Hashable { case today, plan, records, settings }
+    enum Tab: Hashable { case today, plan, records }
     enum EvaluationSource { case first, today, comparison }
 
     @Published var selectedTab: Tab = .today
@@ -112,12 +112,9 @@ private struct MainTabView: View {
             PlanPrototypeView(setupStore: setupStore)
                 .tabItem { Label("計畫", systemImage: "scope") }
                 .tag(PayReviewFlowStore.Tab.plan)
-            RecordsPrototypeView(flow: flow)
+            RecordsPrototypeView(setupStore: setupStore, flow: flow)
                 .tabItem { Label("紀錄", systemImage: "list.bullet.rectangle") }
                 .tag(PayReviewFlowStore.Tab.records)
-            SettingsPrototypeView()
-                .tabItem { Label("設定", systemImage: "gearshape.fill") }
-                .tag(PayReviewFlowStore.Tab.settings)
         }
     }
 }
@@ -139,7 +136,13 @@ private struct TodayPrototypeView: View {
                     HStack(alignment: .center) {
                         Text("7/17 今天").font(.largeTitle.bold())
                         Spacer()
-                        ActivationMascot(size: 68)
+                        NavigationLink {
+                            SettingsPrototypeView(embedsNavigationStack: false)
+                        } label: {
+                            ActivationMascot(size: 68)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("帳號與安全設定")
                     }
                     .payReviewEntrance(delay: 0.02)
 
@@ -579,6 +582,19 @@ private struct WeeklyStoryView: View {
 
 private struct PlanPrototypeView: View {
     @ObservedObject var setupStore: SetupStore
+    @State private var draftGoalName: String
+    @State private var draftIncomeCadence: IncomeCadence
+    @State private var draftPlannedExpenseTotal: Int
+    @State private var draftFlexibleBudget: Int
+    @State private var showsUpdatedPlan = false
+
+    init(setupStore: SetupStore) {
+        self.setupStore = setupStore
+        _draftGoalName = State(initialValue: setupStore.goalName)
+        _draftIncomeCadence = State(initialValue: setupStore.incomeCadence)
+        _draftPlannedExpenseTotal = State(initialValue: NSDecimalNumber(decimal: setupStore.plannedExpenseTotal).intValue)
+        _draftFlexibleBudget = State(initialValue: NSDecimalNumber(decimal: setupStore.flexibleBudget).intValue)
+    }
 
     var body: some View {
         NavigationStack {
@@ -586,40 +602,45 @@ private struct PlanPrototypeView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("計畫").font(.largeTitle.bold())
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("目前守住的目標")
-                            .font(.subheadline.weight(.semibold))
-                        Text(setupStore.goalName)
+                    VStack(alignment: .leading, spacing: 14) {
+                        TextField("自訂目標", text: $draftGoalName)
                             .font(.system(size: 32, weight: .bold, design: .rounded))
                         Text("目標金額 \(setupStore.goalAmount.twdFormatted) · \(setupStore.targetDate.formatted(date: .abbreviated, time: .omitted))")
                             .font(.footnote)
-                    }
-                    .foregroundStyle(PayReviewTheme.surface)
-                    .padding(20)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(PayReviewTheme.primary, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
 
-                    VStack(alignment: .leading, spacing: 14) {
+                        Divider()
+
                         Text("目前計算假設").font(.title3.bold())
-                        assumptionRow("calendar", "收入週期", setupStore.incomeCadence.rawValue)
+                        assumptionControlRow("calendar", "收入週期") {
+                            Picker("收入週期", selection: $draftIncomeCadence) {
+                                Text("每日").tag(IncomeCadence.daily)
+                                Text("每月").tag(IncomeCadence.monthly)
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                        }
                         Divider().padding(.leading, 52)
-                        assumptionRow("checklist", "必要支出", setupStore.plannedExpenseTotal.twdFormatted)
+                        assumptionControlRow("checklist", "必要支出") {
+                            moneyWheelPicker(selection: $draftPlannedExpenseTotal)
+                        }
                         Divider().padding(.leading, 52)
-                        assumptionRow("slider.horizontal.3", "彈性預算", setupStore.flexibleBudget.twdFormatted)
+                        assumptionControlRow("slider.horizontal.3", "彈性預算") {
+                            moneyWheelPicker(selection: $draftFlexibleBudget)
+                        }
                         Divider().padding(.leading, 52)
                         assumptionRow("shield", "安全緩衝", "已保留")
                     }
                     .padding(18)
                     .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
 
-                    NavigationLink {
-                        PlanAssumptionsEditorView(store: setupStore)
+                    Button {
+                        updatePlan()
                     } label: {
-                        HStack {
-                            Text("更新計畫")
-                            Spacer()
-                            Image(systemName: "arrow.clockwise")
+                        HStack(spacing: 8) {
+                            Text(showsUpdatedPlan ? "計畫已更新" : "更新計畫")
+                            Image(systemName: showsUpdatedPlan ? "checkmark" : "arrow.clockwise")
                         }
+                        .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(PayReviewPrimaryButtonStyle())
                 }
@@ -645,50 +666,63 @@ private struct PlanPrototypeView: View {
                 .multilineTextAlignment(.trailing)
         }
     }
-}
 
-private struct PlanAssumptionsEditorView: View {
-    @ObservedObject var store: SetupStore
-    @Environment(\.dismiss) private var dismiss
+    private func assumptionControlRow<Control: View>(
+        _ icon: String,
+        _ title: String,
+        @ViewBuilder control: () -> Control
+    ) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(PayReviewTheme.primary)
+                .frame(width: 40, height: 40)
+                .background(PayReviewTheme.subtle, in: Circle())
 
-    var body: some View {
-        Form {
-            Section("收入與週期") {
-                Picker("收入週期", selection: $store.incomeCadence) {
-                    ForEach(IncomeCadence.allCases) { cadence in
-                        Text(cadence.rawValue).tag(cadence)
-                    }
-                }
-                DatePicker("下次收入日", selection: $store.nextIncomeDate, displayedComponents: .date)
-                TextField("本期可用收入", value: $store.availableIncome, format: .currency(code: "TWD"))
-                    .keyboardType(.decimalPad)
-            }
-            Section("支出與安全空間") {
-                LabeledContent("已規劃必要支出", value: store.plannedExpenseTotal.twdFormatted)
-                TextField("彈性預算", value: $store.flexibleBudget, format: .currency(code: "TWD"))
-                    .keyboardType(.decimalPad)
-                Text("必要支出會先保留，再計算安心可花額度。")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-            Section("目標") {
-                TextField("目標名稱", text: $store.goalName)
-                TextField("目標金額", value: $store.goalAmount, format: .currency(code: "TWD"))
-                    .keyboardType(.decimalPad)
-                DatePicker("目標日期", selection: $store.targetDate, displayedComponents: .date)
-            }
-            Section {
-                Button("儲存並返回計畫") { dismiss() }
-                    .buttonStyle(PayReviewPrimaryButtonStyle())
-            }
-            .listRowBackground(Color.clear)
+            Text(title).font(.subheadline.weight(.semibold))
+            Spacer()
+            control()
+                .foregroundStyle(PayReviewTheme.primaryText)
         }
-        .navigationTitle("調整計畫")
-        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func moneyWheelPicker(selection: Binding<Int>) -> some View {
+        Picker("金額", selection: selection) {
+            ForEach(moneyOptions, id: \.self) { value in
+                Text(Decimal(value).twdFormatted).tag(value)
+            }
+        }
+        .labelsHidden()
+        .pickerStyle(.wheel)
+        .frame(width: 138, height: 88)
+        .clipped()
+    }
+
+    private var moneyOptions: [Int] {
+        let minimum = otherPlannedExpenseTotal
+        let options = Array(stride(from: minimum, through: 100_000, by: 100))
+        return Array(Set(options + [draftPlannedExpenseTotal, draftFlexibleBudget])).sorted()
+    }
+
+    private var otherPlannedExpenseTotal: Int {
+        let total = setupStore.plannedExpenses
+            .dropFirst()
+            .reduce(Decimal.zero) { $0 + $1.amount }
+        return NSDecimalNumber(decimal: total).intValue
+    }
+
+    private func updatePlan() {
+        let trimmedGoalName = draftGoalName.trimmingCharacters(in: .whitespacesAndNewlines)
+        setupStore.goalName = trimmedGoalName.isEmpty ? setupStore.goalName : trimmedGoalName
+        setupStore.incomeCadence = draftIncomeCadence
+        setupStore.updatePlannedExpenseTotal(to: Decimal(draftPlannedExpenseTotal))
+        setupStore.flexibleBudget = Decimal(draftFlexibleBudget)
+        showsUpdatedPlan = true
     }
 }
 
 private struct RecordsPrototypeView: View {
+    @ObservedObject var setupStore: SetupStore
     @ObservedObject var flow: PayReviewFlowStore
     @State private var showsAddRecord = false
     @State private var selectedRecord: PayReviewRecord?
@@ -744,7 +778,7 @@ private struct RecordsPrototypeView: View {
                 .padding(24)
             }
             .background(PayReviewTheme.background.ignoresSafeArea())
-            .sheet(isPresented: $showsAddRecord) { AddRecordFlowView(flow: flow) }
+            .sheet(isPresented: $showsAddRecord) { AddRecordFlowView(setupStore: setupStore, flow: flow) }
             .sheet(item: $selectedRecord) { record in RecordDetailView(record: record, flow: flow) }
         }
     }
@@ -817,11 +851,14 @@ private struct RecordsPrototypeView: View {
 }
 
 private struct AddRecordFlowView: View {
+    @ObservedObject var setupStore: SetupStore
     @ObservedObject var flow: PayReviewFlowStore
     @Environment(\.dismiss) private var dismiss
     @State private var type = 0
-    @State private var amount: Decimal = 699
+    @State private var amountInput = ""
     @State private var category = "帳單"
+    @State private var selectedPlannedExpenseID: UUID?
+    @State private var note = ""
     @State private var showsReview = false
     @State private var isConfirming = false
     @State private var confirmationID = UUID()
@@ -830,28 +867,43 @@ private struct AddRecordFlowView: View {
         NavigationStack {
             Form {
                 Section("這次想留下哪一種紀錄？") {
-                    Picker("類型", selection: $type) { Text("支出").tag(0); Text("收入").tag(1); Text("轉帳").tag(2) }.pickerStyle(.segmented)
-                    Text(type == 2 ? "轉帳不會算成花費" : "正式紀錄會更新預算；試算本身不會").font(.footnote).foregroundStyle(.secondary)
+                    Picker("類型", selection: $type) { Text("支出").tag(0); Text("收入").tag(1) }
+                        .pickerStyle(.segmented)
                 }
-                Section(type == 0 ? "支出金額" : type == 1 ? "收入金額" : "轉帳金額") {
-                    TextField("金額", value: $amount, format: .currency(code: "TWD")).keyboardType(.decimalPad)
-                    if type != 2 { TextField("類別", text: $category) }
+                Section(type == 0 ? "支出金額" : "收入金額") {
+                    TextField("金額", text: $amountInput)
+                        .keyboardType(.decimalPad)
+                    TextField("類別", text: $category)
                 }
                 if type == 0 {
-                    Section("找到可能對應的預期支出") {
-                        Text("電信費 NT$699 · 7 月 20 日")
-                        Text("確認後會完成這筆預期支出，不會再次扣除預算").font(.footnote).foregroundStyle(.secondary)
+                    Section("固定預算") {
+                        Picker("選擇現有固定預算", selection: $selectedPlannedExpenseID) {
+                            Text("不使用固定預算").tag(nil as UUID?)
+                            ForEach(setupStore.plannedExpenses) { expense in
+                                Text("\(expense.name) · \(expense.amount.twdFormatted)")
+                                    .tag(expense.id as UUID?)
+                            }
+                        }
+                        .pickerStyle(.menu)
                     }
                 }
-                if type == 2 { Section { Text("這筆錢只是在自己的帳戶間移動，不計入收入或支出") } }
+                Section("備註") {
+                    TextField("新增備註（選填）", text: $note, axis: .vertical)
+                        .lineLimit(2...4)
+                }
                 Section {
                     Button("檢查後再記錄") { showsReview = true }
                         .buttonStyle(PayReviewPrimaryButtonStyle())
-                        .disabled(amount <= 0 || (type != 2 && category.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
+                        .disabled(amount <= 0 || category.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
                 .listRowBackground(Color.clear)
             }
-            .navigationTitle(type == 0 ? "新增支出" : type == 1 ? "新增收入" : "新增轉帳")
+            .onChange(of: selectedPlannedExpenseID) { _, id in
+                guard let expense = setupStore.plannedExpenses.first(where: { $0.id == id }) else { return }
+                category = expense.name
+                amountInput = String(NSDecimalNumber(decimal: expense.amount).int64Value)
+            }
+            .navigationTitle(type == 0 ? "新增支出" : "新增收入")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } } }
             .navigationDestination(isPresented: $showsReview) {
@@ -870,16 +922,11 @@ private struct AddRecordFlowView: View {
             Section {
                 LabeledContent("類型", value: typeTitle)
                 LabeledContent("金額", value: amount.twdFormatted)
-                if type != 2 { LabeledContent("類別", value: category) }
+                LabeledContent("類別", value: category)
                 LabeledContent("日期", value: "今天")
             }
-            if type == 0 {
-                Section("預期支出配對") {
-                    Text("電信費 NT$699 · 7 月 20 日")
-                    Text("確認後會完成這筆預期支出，不會再次扣除預算。")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
+            if !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Section("備註") { Text(note) }
             }
             Section {
                 Button("確認並建立\(typeTitle)") {
@@ -895,15 +942,19 @@ private struct AddRecordFlowView: View {
     }
 
     private var typeTitle: String {
-        type == 0 ? "支出" : type == 1 ? "收入" : "轉帳"
+        type == 0 ? "支出" : "收入"
+    }
+
+    private var amount: Decimal {
+        Decimal(string: amountInput) ?? .zero
     }
 
     private func confirmRecord() {
         guard !isConfirming else { return }
         isConfirming = true
-        let kind: PayReviewRecord.Kind = type == 0 ? .expense : type == 1 ? .income : .transfer
-        let title = type == 0 ? category : type == 1 ? "收入" : "帳戶轉帳"
-        let detail = type == 0 ? "\(category) · 已確認" : type == 1 ? "收入 · 已確認" : "錢包 → 銀行"
+        let kind: PayReviewRecord.Kind = type == 0 ? .expense : .income
+        let title = type == 0 ? category : "收入"
+        let detail = type == 0 ? "\(category) · 已確認" : "收入 · 已確認"
         flow.confirmRecord(
             confirmationID: confirmationID,
             title: title,
@@ -971,38 +1022,51 @@ private struct RecordDetailView: View {
 }
 
 private struct SettingsPrototypeView: View {
+    let embedsNavigationStack: Bool
     @State private var showsPlus = false
     @State private var showsSignOut = false
     @State private var showsDelete = false
     @State private var showsIntroduction = false
 
+    init(embedsNavigationStack: Bool = true) {
+        self.embedsNavigationStack = embedsNavigationStack
+    }
+
     var body: some View {
-        NavigationStack {
-            List {
-                Section("帳號與安全") { LabeledContent("Apple ID", value: "已登入"); Label("Firebase 雲端已同步", systemImage: "checkmark.circle.fill") }
-                Section("訂閱與購買") { Button("管理方案、續訂與恢復購買") { showsPlus = true } }
-                Section("使用指南") {
-                    Button {
-                        showsIntroduction = true
-                    } label: {
-                        Label("重播動態介紹", systemImage: "play.rectangle")
-                    }
-                }
-                Section("隱私與資料") {
-                    NavigationLink("隱私權與資料使用") { policyView("隱私權與資料使用") }
-                    NavigationLink("匯出我的資料") { policyView("下載紀錄與目前設定") }
-                    Button("刪除帳號", role: .destructive) { showsDelete = true }
-                }
-                Section { Button("安全登出") { showsSignOut = true } }
+        Group {
+            if embedsNavigationStack {
+                NavigationStack { settingsContent }
+            } else {
+                settingsContent
             }
-            .navigationTitle("帳號與安全")
-            .sheet(isPresented: $showsPlus) { PlusOfferView() }
-            .sheet(isPresented: $showsSignOut) { SafeSignOutView { showsSignOut = false } }
-            .sheet(isPresented: $showsDelete) { AccountDeletionPrototypeView { showsDelete = false } }
-            .fullScreenCover(isPresented: $showsIntroduction) {
-                OnboardingFlowView {
-                    showsIntroduction = false
+        }
+    }
+
+    private var settingsContent: some View {
+        List {
+            Section("帳號與安全") { LabeledContent("Apple ID", value: "已登入"); Label("Firebase 雲端已同步", systemImage: "checkmark.circle.fill") }
+            Section("訂閱與購買") { Button("管理方案、續訂與恢復購買") { showsPlus = true } }
+            Section("使用指南") {
+                Button {
+                    showsIntroduction = true
+                } label: {
+                    Label("重播動態介紹", systemImage: "play.rectangle")
                 }
+            }
+            Section("隱私與資料") {
+                NavigationLink("隱私權與資料使用") { policyView("隱私權與資料使用") }
+                NavigationLink("匯出我的資料") { policyView("下載紀錄與目前設定") }
+                Button("刪除帳號", role: .destructive) { showsDelete = true }
+            }
+            Section { Button("安全登出") { showsSignOut = true } }
+        }
+        .navigationTitle("帳號與安全")
+        .sheet(isPresented: $showsPlus) { PlusOfferView() }
+        .sheet(isPresented: $showsSignOut) { SafeSignOutView { showsSignOut = false } }
+        .sheet(isPresented: $showsDelete) { AccountDeletionPrototypeView { showsDelete = false } }
+        .fullScreenCover(isPresented: $showsIntroduction) {
+            OnboardingFlowView {
+                showsIntroduction = false
             }
         }
     }
