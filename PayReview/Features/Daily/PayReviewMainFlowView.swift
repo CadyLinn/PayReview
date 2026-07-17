@@ -75,6 +75,7 @@ struct PayReviewRecord: Identifiable, Equatable {
     var detail: String
     var amount: Decimal
     var kind: Kind
+    var recordedAt: Date = .now
 }
 
 struct PayReviewMainFlowView: View {
@@ -767,16 +768,17 @@ private struct RecordsPrototypeView: View {
     @State private var showsAddRecord = false
     @State private var selectedRecord: PayReviewRecord?
 
+    private var recordCalendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .autoupdatingCurrent
+        return calendar
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("紀錄").font(.largeTitle.bold())
-                        Text("最近發生了什麼？你做了哪些選擇？")
-                            .font(.subheadline)
-                            .foregroundStyle(PayReviewTheme.secondaryText)
-                    }
+                    Text("紀錄").font(.largeTitle.bold())
 
                     VStack(alignment: .leading, spacing: 8) {
                         Text("本週已確認支出")
@@ -794,26 +796,16 @@ private struct RecordsPrototypeView: View {
                     Button("記錄一筆") { showsAddRecord = true }
                         .buttonStyle(PayReviewPrimaryButtonStyle())
 
-                    VStack(alignment: .leading, spacing: 14) {
-                        HStack {
-                            Text("今天 · 7 月 17 日").font(.title3.bold())
-                            Spacer()
-                            Text("\(flow.records.count) 筆").font(.caption).foregroundStyle(.secondary)
-                        }
-
-                        ForEach(Array(flow.records.enumerated()), id: \.element.id) { index, record in
-                            Button { selectedRecord = record } label: { recordRow(record) }
-                                .buttonStyle(PayReviewPressButtonStyle())
-
-                            if index < flow.records.count - 1 {
-                                Divider().padding(.leading, 52)
-                            }
+                    LazyVStack(spacing: 12) {
+                        ForEach(Array(dailyRecordGroups.enumerated()), id: \.element.id) { index, group in
+                            DailyRecordsDisclosureGroup(
+                                group: group,
+                                calendar: recordCalendar,
+                                initiallyExpanded: index == 0,
+                                selectedRecord: $selectedRecord
+                            )
                         }
                     }
-                    .padding(18)
-                    .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-
-                    MascotSpeechView(message: "紀錄不是檢討，是幫你看見下一步")
                 }
                 .padding(24)
             }
@@ -823,14 +815,128 @@ private struct RecordsPrototypeView: View {
         }
     }
 
+    private var dailyRecordGroups: [DailyRecordGroup] {
+        Dictionary(grouping: flow.records) { record in
+            recordCalendar.startOfDay(for: record.recordedAt)
+        }
+        .map { day, records in
+            DailyRecordGroup(day: day, records: records)
+        }
+        .sorted { $0.day > $1.day }
+    }
+
     private var confirmedExpenseTotal: Decimal {
         flow.records
-            .filter { $0.kind == .expense }
+            .filter { record in
+                guard let currentWeek = recordCalendar.dateInterval(of: .weekOfYear, for: .now) else {
+                    return false
+                }
+                return record.kind == .expense && currentWeek.contains(record.recordedAt)
+            }
             .reduce(Decimal.zero) { $0 + $1.amount }
     }
 
     private var confirmedExpenseCount: Int {
-        flow.records.filter { $0.kind == .expense }.count
+        flow.records.filter { record in
+            guard let currentWeek = recordCalendar.dateInterval(of: .weekOfYear, for: .now) else {
+                return false
+            }
+            return record.kind == .expense && currentWeek.contains(record.recordedAt)
+        }.count
+    }
+}
+
+private struct DailyRecordGroup: Identifiable {
+    let day: Date
+    let records: [PayReviewRecord]
+
+    var id: Date { day }
+
+    var expenseTotal: Decimal {
+        records
+            .filter { $0.kind == .expense }
+            .reduce(Decimal.zero) { $0 + $1.amount }
+    }
+}
+
+private struct DailyRecordsDisclosureGroup: View {
+    let group: DailyRecordGroup
+    let calendar: Calendar
+    @Binding var selectedRecord: PayReviewRecord?
+    @State private var isExpanded: Bool
+
+    init(
+        group: DailyRecordGroup,
+        calendar: Calendar,
+        initiallyExpanded: Bool,
+        selectedRecord: Binding<PayReviewRecord?>
+    ) {
+        self.group = group
+        self.calendar = calendar
+        _selectedRecord = selectedRecord
+        _isExpanded = State(initialValue: initiallyExpanded)
+    }
+
+    var body: some View {
+        DisclosureGroup(isExpanded: $isExpanded) {
+            VStack(spacing: 0) {
+                Divider()
+                    .padding(.top, 14)
+
+                ForEach(Array(group.records.enumerated()), id: \.element.id) { index, record in
+                    Button { selectedRecord = record } label: { recordRow(record) }
+                        .buttonStyle(PayReviewPressButtonStyle())
+                        .padding(.vertical, 12)
+
+                    if index < group.records.count - 1 {
+                        Divider().padding(.leading, 52)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(dayTitle)
+                        .font(.title3.bold())
+                    Text("\(group.records.count) 筆紀錄")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 8)
+
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("本日開銷")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(group.expenseTotal.twdFormatted)
+                        .font(.headline)
+                        .foregroundStyle(PayReviewTheme.primaryText)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .tint(PayReviewTheme.primaryText)
+        .padding(18)
+        .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .accessibilityHint(isExpanded ? "收合當日紀錄" : "展開當日紀錄")
+    }
+
+    private var dayTitle: String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_Hant_TW")
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.setLocalizedDateFormatFromTemplate("MMMd")
+        let formattedDate = formatter.string(from: group.day)
+
+        if calendar.isDateInToday(group.day) {
+            return "今天 · \(formattedDate)"
+        }
+        if calendar.isDateInYesterday(group.day) {
+            return "昨天 · \(formattedDate)"
+        }
+        return formattedDate
     }
 
     private func recordRow(_ record: PayReviewRecord) -> some View {
