@@ -1,0 +1,62 @@
+event: iOS AI Summer Camp 2026
+name: PayReview
+team_name: 忘性很差
+category: Finance
+intro: >
+  PayReview is a personal finance app built around one idea: see the impact of a
+  purchase before you make it, not after. Most budgeting apps only tell you
+  where your money went once it's already spent — PayReview answers that
+  question one step earlier, showing how a purchase affects today's budget, your
+  flexible spending, and the savings goal you're working toward, before you tap
+  "pay." After a short guided setup, users define their income cycle, essential
+  expenses, flexible budget, and a savings goal (e.g. "Trip to Japan"). The
+  "Today" view shows a live "safe to spend today" amount, along with an
+  "Evaluate this purchase" tool: enter an amount and category, and PayReview
+  projects how it would affect this week's budget and your goal timeline before
+  you decide, not after. The "Plan" view summarizes the income cycle, essential
+  expenses, flexible budget, safety buffer, and goals, and the "Records" view
+  logs real expenses, income, and transfers — confirmed records update the
+  budget, while an evaluation never does, keeping simulation and reality clearly
+  separate. Accounts and data are backed by Firebase Authentication (email and
+  Google sign-in) and Firestore sync.
+localizations:
+  en:
+    name: PayReview
+    intro: >
+      PayReview is a personal finance app built around one idea: see the impact
+      of a purchase before you make it, not after. Most budgeting apps only tell
+      you where your money went once it's already spent — PayReview answers that
+      question one step earlier, showing how a purchase affects today's budget,
+      your flexible spending, and the savings goal you're working toward, before
+      you tap "pay." After a short guided setup, users define their income
+      cycle, essential expenses, flexible budget, and a savings goal (e.g. "Trip
+      to Japan"). The "Today" view shows a live "safe to spend today" amount,
+      along with an "Evaluate this purchase" tool: enter an amount and category,
+      and PayReview projects how it would affect this week's budget and your
+      goal timeline before you decide, not after. The "Plan" view summarizes the
+      income cycle, essential expenses, flexible budget, safety buffer, and
+      goals, and the "Records" view logs real expenses, income, and transfers —
+      confirmed records update the budget, while an evaluation never does,
+      keeping simulation and reality clearly separate. Accounts and data are
+      backed by Firebase Authentication (email and Google sign-in) and Firestore
+      sync.
+  zh-TW:
+    name: PayReview
+    intro: >
+      PayReview 是一款「消費前先看見影響」的個人財務規劃 App。多數記帳工具只能在花費之後告訴你錢去了哪裡， PayReview
+      想解決的是更早一步的問題：在按下付款鍵之前，先讓你知道這筆錢會如何影響今天的預算、彈性支出，
+      與你正在存的目標。使用者完成簡單的引導設定後，會建立收入週期、必要支出、彈性預算與存錢目標。
+      「今天」頁面即時呈現「今天約可安心花的金額」，並提供「評估眼前的消費」功能：輸入金額與類別後， PayReview
+      會試算這筆錢對本週預算與目標達成時間的影響，讓使用者在決定要不要花之前先看到後果。
+      「計畫」頁面彙整收入週期、必要支出、彈性預算、安全緩衝與目標；「紀錄」頁面用於新增正式的支出、收入與轉帳，
+      正式紀錄會更新預算，試算則不會，讓模擬與真實紀錄清楚分開。帳號與資料以 Firebase Authentication （Email 與
+      Google 登入）與 Firestore 雲端同步。
+video_url: https://youtube.com/watch?v=xxxx
+poster_site: https://payreview.yytttt420.chatgpt.site/
+icon: https://olnyshvsfziowerjrmhq.supabase.co/storage/v1/object/public/submissions/23595794-b3e1-45ed-8f57-d721a424bbf0/submissions/b7005b76-552f-41bd-af5e-790ba1b42081/icon-icon.png
+screenshots:
+  - https://olnyshvsfziowerjrmhq.supabase.co/storage/v1/object/public/submissions/23595794-b3e1-45ed-8f57-d721a424bbf0/submissions/b7005b76-552f-41bd-af5e-790ba1b42081/screenshot-1-01.png
+  - .scc/media/screenshots/02.jpg
+  - .scc/media/screenshots/03.jpg
+  - .scc/media/screenshots/04.jpg
+  - .scc/media/screenshots/05.jpg

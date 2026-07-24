@@ -694,6 +694,15 @@ private struct PlanPrototypeView: View {
     @State private var draftPlannedExpenseTotal: Int
     @State private var draftFlexibleBudget: Int
     @State private var showsUpdatedPlan = false
+    @State private var selectedMoneyField: MoneyField?
+    @StateObject private var planSyncStore: PlanSyncStore
+
+    private enum MoneyField: Hashable, Identifiable {
+        case plannedExpenses, flexibleBudget
+
+        var id: Self { self }
+        var title: String { self == .plannedExpenses ? "必要支出" : "彈性預算" }
+    }
 
     init(setupStore: SetupStore) {
         self.setupStore = setupStore
@@ -701,6 +710,7 @@ private struct PlanPrototypeView: View {
         _draftIncomeCadence = State(initialValue: setupStore.incomeCadence)
         _draftPlannedExpenseTotal = State(initialValue: NSDecimalNumber(decimal: setupStore.plannedExpenseTotal).intValue)
         _draftFlexibleBudget = State(initialValue: NSDecimalNumber(decimal: setupStore.flexibleBudget).intValue)
+        _planSyncStore = StateObject(wrappedValue: PlanSyncStore(repository: FirestorePlanRepository()))
     }
 
     var body: some View {
@@ -721,6 +731,7 @@ private struct PlanPrototypeView: View {
                         assumptionControlRow("calendar", "收入週期") {
                             Picker("收入週期", selection: $draftIncomeCadence) {
                                 Text("每日").tag(IncomeCadence.daily)
+                                Text("每週").tag(IncomeCadence.weekly)
                                 Text("每月").tag(IncomeCadence.monthly)
                             }
                             .labelsHidden()
@@ -728,11 +739,11 @@ private struct PlanPrototypeView: View {
                         }
                         Divider().padding(.leading, 52)
                         assumptionControlRow("checklist", "必要支出") {
-                            moneyWheelPicker(selection: $draftPlannedExpenseTotal)
+                            moneyPickerButton(value: draftPlannedExpenseTotal, field: .plannedExpenses)
                         }
                         Divider().padding(.leading, 52)
                         assumptionControlRow("slider.horizontal.3", "彈性預算") {
-                            moneyWheelPicker(selection: $draftFlexibleBudget)
+                            moneyPickerButton(value: draftFlexibleBudget, field: .flexibleBudget)
                         }
                         Divider().padding(.leading, 52)
                         assumptionRow("shield", "安全緩衝", "已保留")
@@ -744,16 +755,30 @@ private struct PlanPrototypeView: View {
                         updatePlan()
                     } label: {
                         HStack(spacing: 8) {
-                            Text(showsUpdatedPlan ? "計畫已更新" : "更新計畫")
-                            Image(systemName: showsUpdatedPlan ? "checkmark" : "arrow.clockwise")
+                            Text(planSyncStore.isSynchronizing ? "正在同步" : showsUpdatedPlan ? "計畫已更新" : "更新計畫")
+                            Image(systemName: planSyncStore.isSynchronizing ? "arrow.triangle.2.circlepath" : showsUpdatedPlan ? "checkmark" : "arrow.clockwise")
                         }
                         .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(PayReviewPrimaryButtonStyle())
+                    .disabled(planSyncStore.isSynchronizing)
                 }
                 .padding(24)
             }
             .background(PayReviewTheme.background.ignoresSafeArea())
+            .sheet(item: $selectedMoneyField) { field in
+                PlanMoneyPickerSheet(
+                    title: field.title,
+                    selection: moneyBinding(for: field),
+                    options: moneyOptions(for: field)
+                )
+                .presentationDetents([.height(300)])
+            }
+            .alert("無法更新計畫", isPresented: syncErrorBinding) {
+                Button("好", role: .cancel) { planSyncStore.dismissError() }
+            } message: {
+                Text(planSyncStore.errorMessage ?? "請稍後再試。")
+            }
         }
     }
 
@@ -793,22 +818,31 @@ private struct PlanPrototypeView: View {
         }
     }
 
-    private func moneyWheelPicker(selection: Binding<Int>) -> some View {
-        Picker("金額", selection: selection) {
-            ForEach(moneyOptions, id: \.self) { value in
-                Text(Decimal(value).twdFormatted).tag(value)
+    private func moneyPickerButton(value: Int, field: MoneyField) -> some View {
+        Button {
+            selectedMoneyField = field
+        } label: {
+            HStack(spacing: 4) {
+                Text(Decimal(value).twdFormatted)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption2.weight(.bold))
             }
         }
-        .labelsHidden()
-        .pickerStyle(.wheel)
-        .frame(width: 138, height: 88)
-        .clipped()
+        .buttonStyle(.plain)
     }
 
-    private var moneyOptions: [Int] {
-        let minimum = otherPlannedExpenseTotal
+    private func moneyBinding(for field: MoneyField) -> Binding<Int> {
+        switch field {
+        case .plannedExpenses: return $draftPlannedExpenseTotal
+        case .flexibleBudget: return $draftFlexibleBudget
+        }
+    }
+
+    private func moneyOptions(for field: MoneyField) -> [Int] {
+        let minimum = field == .plannedExpenses ? otherPlannedExpenseTotal : 0
         let options = Array(stride(from: minimum, through: 100_000, by: 100))
-        return Array(Set(options + [draftPlannedExpenseTotal, draftFlexibleBudget])).sorted()
+        let current = field == .plannedExpenses ? draftPlannedExpenseTotal : draftFlexibleBudget
+        return Array(Set(options + [current])).sorted()
     }
 
     private var otherPlannedExpenseTotal: Int {
@@ -820,11 +854,57 @@ private struct PlanPrototypeView: View {
 
     private func updatePlan() {
         let trimmedGoalName = draftGoalName.trimmingCharacters(in: .whitespacesAndNewlines)
-        setupStore.goalName = trimmedGoalName.isEmpty ? setupStore.goalName : trimmedGoalName
-        setupStore.incomeCadence = draftIncomeCadence
-        setupStore.updatePlannedExpenseTotal(to: Decimal(draftPlannedExpenseTotal))
-        setupStore.flexibleBudget = Decimal(draftFlexibleBudget)
-        showsUpdatedPlan = true
+        let goalName = trimmedGoalName.isEmpty ? setupStore.goalName : trimmedGoalName
+        let request = PlanSyncRequest(
+            goalName: goalName,
+            incomeCadence: draftIncomeCadence,
+            plannedExpenseTotalMinorUnits: Int64(draftPlannedExpenseTotal),
+            flexibleBudgetMinorUnits: Int64(draftFlexibleBudget)
+        )
+
+        Task { @MainActor in
+            guard await planSyncStore.synchronize(request) else { return }
+            setupStore.goalName = goalName
+            setupStore.incomeCadence = draftIncomeCadence
+            setupStore.updatePlannedExpenseTotal(to: Decimal(draftPlannedExpenseTotal))
+            setupStore.flexibleBudget = Decimal(draftFlexibleBudget)
+            showsUpdatedPlan = true
+        }
+    }
+
+    private var syncErrorBinding: Binding<Bool> {
+        Binding(
+            get: { planSyncStore.errorMessage != nil },
+            set: { if !$0 { planSyncStore.dismissError() } }
+        )
+    }
+}
+
+private struct PlanMoneyPickerSheet: View {
+    let title: String
+    @Binding var selection: Int
+    let options: [Int]
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 8) {
+            HStack {
+                Text(title).font(.headline)
+                Spacer()
+                Button("完成") { dismiss() }
+                    .font(.body.weight(.semibold))
+            }
+            .padding(.horizontal, 24)
+
+            Picker(title, selection: $selection) {
+                ForEach(options, id: \.self) { value in
+                    Text(Decimal(value).twdFormatted).tag(value)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.wheel)
+        }
+        .padding(.top, 18)
     }
 }
 
