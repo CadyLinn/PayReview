@@ -1,0 +1,17 @@
+event: iOS AI Summer Camp 2026
+name: Your Project
+team_name: 忘性很差
+category: Food & Drink
+intro: A longer description (max 1000 words) about what your project does...
+localizations:
+  zh-TW:
+    name: 請填寫繁體中文專案名稱
+    intro: 請填寫繁體中文專案介紹，並在提交前人工檢查。
+  en:
+    name: Your Project
+    intro: Describe your project in English, then review it before submitting.
+video_url: https://youtube.com/watch?v=xxxx
+poster_site: https://example.com/poster
+icon: .scc/media/icon.png
+screenshots:
+  - .scc/media/screenshots/01.png
