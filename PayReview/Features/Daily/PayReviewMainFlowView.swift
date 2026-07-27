@@ -109,12 +109,13 @@ struct PayReviewRecord: Identifiable, Equatable {
 
 struct PayReviewMainFlowView: View {
     @ObservedObject var setupStore: SetupStore
+    let uid: String
     @StateObject private var flow = PayReviewFlowStore()
     @AppStorage("hasCompletedFirstPayReviewEvaluation") private var hasCompletedFirstEvaluation = false
     @State private var showsFirstEvaluation = false
 
     var body: some View {
-        MainTabView(setupStore: setupStore, flow: flow)
+        MainTabView(setupStore: setupStore, flow: flow, uid: uid)
             .tint(PayReviewTheme.primary)
             .fullScreenCover(isPresented: $showsFirstEvaluation) {
                 EvaluationFlowView(flow: flow, startsWithResult: false) {
@@ -133,6 +134,7 @@ struct PayReviewMainFlowView: View {
 private struct MainTabView: View {
     @ObservedObject var setupStore: SetupStore
     @ObservedObject var flow: PayReviewFlowStore
+    let uid: String
 
     var body: some View {
         TabView(selection: $flow.selectedTab) {
@@ -142,7 +144,7 @@ private struct MainTabView: View {
             PlanPrototypeView(setupStore: setupStore)
                 .tabItem { Label("計畫", systemImage: "scope") }
                 .tag(PayReviewFlowStore.Tab.plan)
-            RecordsPrototypeView(setupStore: setupStore, flow: flow)
+            TransactionListView(uid: uid)
                 .tabItem { Label("紀錄", systemImage: "list.bullet.rectangle") }
                 .tag(PayReviewFlowStore.Tab.records)
         }
@@ -695,7 +697,6 @@ private struct PlanPrototypeView: View {
     @State private var draftFlexibleBudget: Int
     @State private var showsUpdatedPlan = false
     @State private var selectedMoneyField: MoneyField?
-    @StateObject private var planSyncStore: PlanSyncStore
 
     private enum MoneyField: Hashable, Identifiable {
         case plannedExpenses, flexibleBudget
@@ -710,7 +711,6 @@ private struct PlanPrototypeView: View {
         _draftIncomeCadence = State(initialValue: setupStore.incomeCadence)
         _draftPlannedExpenseTotal = State(initialValue: NSDecimalNumber(decimal: setupStore.plannedExpenseTotal).intValue)
         _draftFlexibleBudget = State(initialValue: NSDecimalNumber(decimal: setupStore.flexibleBudget).intValue)
-        _planSyncStore = StateObject(wrappedValue: PlanSyncStore(repository: FirestorePlanRepository()))
     }
 
     var body: some View {
@@ -755,13 +755,12 @@ private struct PlanPrototypeView: View {
                         updatePlan()
                     } label: {
                         HStack(spacing: 8) {
-                            Text(planSyncStore.isSynchronizing ? "正在同步" : showsUpdatedPlan ? "計畫已更新" : "更新計畫")
-                            Image(systemName: planSyncStore.isSynchronizing ? "arrow.triangle.2.circlepath" : showsUpdatedPlan ? "checkmark" : "arrow.clockwise")
+                            Text(showsUpdatedPlan ? "計畫已更新" : "更新計畫")
+                            Image(systemName: showsUpdatedPlan ? "checkmark" : "arrow.clockwise")
                         }
                         .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(PayReviewPrimaryButtonStyle())
-                    .disabled(planSyncStore.isSynchronizing)
                 }
                 .padding(24)
             }
@@ -773,11 +772,6 @@ private struct PlanPrototypeView: View {
                     options: moneyOptions(for: field)
                 )
                 .presentationDetents([.height(300)])
-            }
-            .alert("無法更新計畫", isPresented: syncErrorBinding) {
-                Button("好", role: .cancel) { planSyncStore.dismissError() }
-            } message: {
-                Text(planSyncStore.errorMessage ?? "請稍後再試。")
             }
         }
     }
@@ -855,28 +849,16 @@ private struct PlanPrototypeView: View {
     private func updatePlan() {
         let trimmedGoalName = draftGoalName.trimmingCharacters(in: .whitespacesAndNewlines)
         let goalName = trimmedGoalName.isEmpty ? setupStore.goalName : trimmedGoalName
-        let request = PlanSyncRequest(
-            goalName: goalName,
-            incomeCadence: draftIncomeCadence,
-            plannedExpenseTotalMinorUnits: Int64(draftPlannedExpenseTotal),
-            flexibleBudgetMinorUnits: Int64(draftFlexibleBudget)
-        )
 
-        Task { @MainActor in
-            guard await planSyncStore.synchronize(request) else { return }
-            setupStore.goalName = goalName
-            setupStore.incomeCadence = draftIncomeCadence
-            setupStore.updatePlannedExpenseTotal(to: Decimal(draftPlannedExpenseTotal))
-            setupStore.flexibleBudget = Decimal(draftFlexibleBudget)
-            showsUpdatedPlan = true
-        }
-    }
-
-    private var syncErrorBinding: Binding<Bool> {
-        Binding(
-            get: { planSyncStore.errorMessage != nil },
-            set: { if !$0 { planSyncStore.dismissError() } }
-        )
+        // v1 note: this only updates local SetupStore state. There is no Firestore-backed
+        // plan/goal/budget sync in v1 — see docs/deferred-v2-scope.md. The previous
+        // PlanSyncStore/FirestorePlanRepository layer synced to collections that were
+        // removed as part of the v1 rebuild.
+        setupStore.goalName = goalName
+        setupStore.incomeCadence = draftIncomeCadence
+        setupStore.updatePlannedExpenseTotal(to: Decimal(draftPlannedExpenseTotal))
+        setupStore.flexibleBudget = Decimal(draftFlexibleBudget)
+        showsUpdatedPlan = true
     }
 }
 
@@ -905,411 +887,6 @@ private struct PlanMoneyPickerSheet: View {
             .pickerStyle(.wheel)
         }
         .padding(.top, 18)
-    }
-}
-
-private struct RecordsPrototypeView: View {
-    @ObservedObject var setupStore: SetupStore
-    @ObservedObject var flow: PayReviewFlowStore
-    @State private var showsAddRecord = false
-    @State private var selectedRecord: PayReviewRecord?
-
-    private var recordCalendar: Calendar {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = .autoupdatingCurrent
-        return calendar
-    }
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("紀錄").font(.largeTitle.bold())
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("本週已確認支出")
-                            .font(.subheadline.weight(.semibold))
-                        Text(confirmedExpenseTotal.twdFormatted)
-                            .font(.system(size: 42, weight: .bold, design: .rounded))
-                        Text("\(confirmedExpenseCount) 筆支出已記入計畫 · 轉帳不計入收支")
-                            .font(.footnote)
-                    }
-                    .foregroundStyle(PayReviewTheme.surface)
-                    .padding(20)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(PayReviewTheme.primary, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
-
-                    Button("記錄一筆") { showsAddRecord = true }
-                        .buttonStyle(PayReviewPrimaryButtonStyle())
-
-                    LazyVStack(spacing: 12) {
-                        ForEach(Array(dailyRecordGroups.enumerated()), id: \.element.id) { index, group in
-                            DailyRecordsDisclosureGroup(
-                                group: group,
-                                calendar: recordCalendar,
-                                initiallyExpanded: index == 0,
-                                selectedRecord: $selectedRecord
-                            )
-                        }
-                    }
-                }
-                .padding(24)
-            }
-            .background(PayReviewTheme.background.ignoresSafeArea())
-            .sheet(isPresented: $showsAddRecord) { AddRecordFlowView(setupStore: setupStore, flow: flow) }
-            .sheet(item: $selectedRecord) { record in RecordDetailView(record: record, flow: flow) }
-        }
-    }
-
-    private var dailyRecordGroups: [DailyRecordGroup] {
-        Dictionary(grouping: flow.records) { record in
-            recordCalendar.startOfDay(for: record.recordedAt)
-        }
-        .map { day, records in
-            DailyRecordGroup(day: day, records: records)
-        }
-        .sorted { $0.day > $1.day }
-    }
-
-    private var confirmedExpenseTotal: Decimal {
-        flow.records
-            .filter { record in
-                guard let currentWeek = recordCalendar.dateInterval(of: .weekOfYear, for: .now) else {
-                    return false
-                }
-                return record.kind == .expense && currentWeek.contains(record.recordedAt)
-            }
-            .reduce(Decimal.zero) { $0 + $1.amount }
-    }
-
-    private var confirmedExpenseCount: Int {
-        flow.records.filter { record in
-            guard let currentWeek = recordCalendar.dateInterval(of: .weekOfYear, for: .now) else {
-                return false
-            }
-            return record.kind == .expense && currentWeek.contains(record.recordedAt)
-        }.count
-    }
-}
-
-private struct DailyRecordGroup: Identifiable {
-    let day: Date
-    let records: [PayReviewRecord]
-
-    var id: Date { day }
-
-    var expenseTotal: Decimal {
-        records
-            .filter { $0.kind == .expense }
-            .reduce(Decimal.zero) { $0 + $1.amount }
-    }
-}
-
-private struct DailyRecordsDisclosureGroup: View {
-    let group: DailyRecordGroup
-    let calendar: Calendar
-    @Binding var selectedRecord: PayReviewRecord?
-    @State private var isExpanded: Bool
-
-    init(
-        group: DailyRecordGroup,
-        calendar: Calendar,
-        initiallyExpanded: Bool,
-        selectedRecord: Binding<PayReviewRecord?>
-    ) {
-        self.group = group
-        self.calendar = calendar
-        _selectedRecord = selectedRecord
-        _isExpanded = State(initialValue: initiallyExpanded)
-    }
-
-    var body: some View {
-        DisclosureGroup(isExpanded: $isExpanded) {
-            VStack(spacing: 0) {
-                Divider()
-                    .padding(.top, 14)
-
-                ForEach(Array(group.records.enumerated()), id: \.element.id) { index, record in
-                    Button { selectedRecord = record } label: { recordRow(record) }
-                        .buttonStyle(PayReviewPressButtonStyle())
-                        .padding(.vertical, 12)
-
-                    if index < group.records.count - 1 {
-                        Divider().padding(.leading, 52)
-                    }
-                }
-            }
-        } label: {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(dayTitle)
-                        .font(.title3.bold())
-                    Text("\(group.records.count) 筆紀錄")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer(minLength: 8)
-
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text("本日開銷")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(group.expenseTotal.twdFormatted)
-                        .font(.headline)
-                        .foregroundStyle(PayReviewTheme.primaryText)
-                }
-            }
-            .contentShape(Rectangle())
-        }
-        .tint(PayReviewTheme.primaryText)
-        .padding(18)
-        .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .accessibilityHint(isExpanded ? "收合當日紀錄" : "展開當日紀錄")
-    }
-
-    private var dayTitle: String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_Hant_TW")
-        formatter.calendar = calendar
-        formatter.timeZone = calendar.timeZone
-        formatter.setLocalizedDateFormatFromTemplate("MMMd")
-        let formattedDate = formatter.string(from: group.day)
-
-        if calendar.isDateInToday(group.day) {
-            return "今天 · \(formattedDate)"
-        }
-        if calendar.isDateInYesterday(group.day) {
-            return "昨天 · \(formattedDate)"
-        }
-        return formattedDate
-    }
-
-    private func recordRow(_ record: PayReviewRecord) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: recordIcon(for: record.kind))
-                .font(.body.weight(.semibold))
-                .foregroundStyle(recordIconColor(for: record.kind))
-                .frame(width: 40, height: 40)
-                .background(recordIconBackground(for: record.kind), in: Circle())
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(record.title).font(.subheadline.weight(.semibold))
-                Text(record.detail).font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 3) {
-                Text(recordAmount(for: record)).font(.subheadline.weight(.semibold))
-                if record.kind == .deferred {
-                    Text("尚未記入")
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(PayReviewTheme.secondaryText)
-                }
-            }
-        }
-        .contentShape(Rectangle())
-    }
-
-    private func recordAmount(for record: PayReviewRecord) -> String {
-        switch record.kind {
-        case .expense: return "−\(record.amount.twdFormatted)"
-        case .income: return "+\(record.amount.twdFormatted)"
-        case .transfer: return record.amount.twdFormatted
-        case .deferred: return "晚點決定"
-        }
-    }
-
-    private func recordIcon(for kind: PayReviewRecord.Kind) -> String {
-        switch kind {
-        case .expense: return "arrow.up.right"
-        case .income: return "arrow.down.left"
-        case .transfer: return "arrow.left.arrow.right"
-        case .deferred: return "clock"
-        }
-    }
-
-    private func recordIconColor(for kind: PayReviewRecord.Kind) -> Color {
-        kind == .expense ? PayReviewTheme.primary : PayReviewTheme.primaryText
-    }
-
-    private func recordIconBackground(for kind: PayReviewRecord.Kind) -> Color {
-        switch kind {
-        case .expense: return PayReviewTheme.cautionSurface
-        case .income: return PayReviewTheme.safe.opacity(0.35)
-        case .transfer: return PayReviewTheme.subtle
-        case .deferred: return Color(.systemGray6)
-        }
-    }
-}
-
-private struct AddRecordFlowView: View {
-    @ObservedObject var setupStore: SetupStore
-    @ObservedObject var flow: PayReviewFlowStore
-    @Environment(\.dismiss) private var dismiss
-    @State private var type = 0
-    @State private var amountInput = ""
-    @State private var category = "帳單"
-    @State private var selectedPlannedExpenseID: UUID?
-    @State private var note = ""
-    @State private var showsReview = false
-    @State private var isConfirming = false
-    @State private var confirmationID = UUID()
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("這次想留下哪一種紀錄？") {
-                    Picker("類型", selection: $type) { Text("支出").tag(0); Text("收入").tag(1) }
-                        .pickerStyle(.segmented)
-                }
-                Section(type == 0 ? "支出金額" : "收入金額") {
-                    TextField("金額", text: $amountInput)
-                        .keyboardType(.decimalPad)
-                    TextField("類別", text: $category)
-                }
-                if type == 0 {
-                    Section("固定預算") {
-                        Picker("選擇現有固定預算", selection: $selectedPlannedExpenseID) {
-                            Text("不使用固定預算").tag(nil as UUID?)
-                            ForEach(setupStore.plannedExpenses) { expense in
-                                Text("\(expense.name) · \(expense.amount.twdFormatted)")
-                                    .tag(expense.id as UUID?)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                    }
-                }
-                Section("備註") {
-                    TextField("新增備註（選填）", text: $note, axis: .vertical)
-                        .lineLimit(2...4)
-                }
-                Section {
-                    Button("檢查後再記錄") { showsReview = true }
-                        .buttonStyle(PayReviewPrimaryButtonStyle())
-                        .disabled(amount <= 0 || category.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-                .listRowBackground(Color.clear)
-            }
-            .onChange(of: selectedPlannedExpenseID) { _, id in
-                guard let expense = setupStore.plannedExpenses.first(where: { $0.id == id }) else { return }
-                category = expense.name
-                amountInput = String(NSDecimalNumber(decimal: expense.amount).int64Value)
-            }
-            .navigationTitle(type == 0 ? "新增支出" : "新增收入")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } } }
-            .navigationDestination(isPresented: $showsReview) {
-                reviewView
-            }
-        }
-    }
-
-    private var reviewView: some View {
-        List {
-            Section {
-                Text("最後確認").font(.largeTitle.bold())
-                Text("確認後才會建立正式紀錄並更新相關計算。")
-                    .foregroundStyle(.secondary)
-            }
-            Section {
-                LabeledContent("類型", value: typeTitle)
-                LabeledContent("金額", value: amount.twdFormatted)
-                LabeledContent("類別", value: category)
-                LabeledContent("日期", value: "今天")
-            }
-            if !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Section("備註") { Text(note) }
-            }
-            Section {
-                Button("確認並建立\(typeTitle)") {
-                    confirmRecord()
-                }
-                .buttonStyle(PayReviewPrimaryButtonStyle())
-                .disabled(isConfirming)
-            }
-            .listRowBackground(Color.clear)
-        }
-        .navigationTitle("確認紀錄")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-
-    private var typeTitle: String {
-        type == 0 ? "支出" : "收入"
-    }
-
-    private var amount: Decimal {
-        Decimal(string: amountInput) ?? .zero
-    }
-
-    private func confirmRecord() {
-        guard !isConfirming else { return }
-        isConfirming = true
-        let kind: PayReviewRecord.Kind = type == 0 ? .expense : .income
-        let title = type == 0 ? category : "收入"
-        let detail = type == 0 ? "\(category) · 已確認" : "收入 · 已確認"
-        flow.confirmRecord(
-            confirmationID: confirmationID,
-            title: title,
-            detail: detail,
-            amount: amount,
-            kind: kind
-        )
-        dismiss()
-    }
-}
-
-private struct RecordDetailView: View {
-    let record: PayReviewRecord
-    @ObservedObject var flow: PayReviewFlowStore
-    @Environment(\.dismiss) private var dismiss
-    @State private var confirmsDelete = false
-
-    var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    Text(record.title).font(.largeTitle.bold())
-                    Text(record.kind == .deferred ? "不扣預算" : record.amount.twdFormatted).font(.title.bold())
-                    if record.kind == .deferred {
-                        Label("尚未建立交易", systemImage: "clock")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Label("Firebase 雲端已確認", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(PayReviewTheme.primary)
-                    }
-                }
-                Section {
-                    LabeledContent("類型", value: recordKindTitle)
-                    LabeledContent("日期", value: "2026 年 7 月 17 日")
-                    LabeledContent("資料來源", value: record.kind == .deferred ? "消費評估" : "手動")
-                }
-                if record.kind == .expense && record.title == "電信費" {
-                    Section("計畫連結") {
-                        Text("已完成預期支出「電信費」")
-                        Text("這筆交易已取代原預留項目，不會重複扣除").font(.footnote).foregroundStyle(.secondary)
-                    }
-                } else if record.kind == .transfer {
-                    Section("計算方式") { Text("轉帳不計入收入或支出。") }
-                } else if record.kind == .deferred {
-                    Section("評估狀態") { Text("這是保留的評估，不會改變正式預算或目標。") }
-                }
-                Section { Button("刪除紀錄", role: .destructive) { confirmsDelete = true } }
-            }
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("返回") { dismiss() } } }
-            .alert("要移除這筆紀錄嗎？", isPresented: $confirmsDelete) {
-                Button("確認刪除", role: .destructive) { flow.records.removeAll { $0.id == record.id }; dismiss() }
-                Button("先保留這筆紀錄", role: .cancel) {}
-            } message: { Text("刪除後，這筆交易會從紀錄與計算中移除") }
-        }
-    }
-
-    private var recordKindTitle: String {
-        switch record.kind {
-        case .expense: "支出"
-        case .income: "收入"
-        case .transfer: "轉帳"
-        case .deferred: "待決定評估"
-        }
     }
 }
 
@@ -1460,4 +1037,4 @@ private struct PlusOfferView: View {
     private func plan(_ title: String, _ detail: String, _ selected: Bool) -> some View { VStack(alignment: .leading) { Text(title).font(.headline); Text(detail).font(.subheadline) }.padding().frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading).background(selected ? PayReviewTheme.subtle : Color(.systemBackground), in: RoundedRectangle(cornerRadius: 20)) }
 }
 
-#Preview { PayReviewMainFlowView(setupStore: SetupStore()) }
+#Preview { PayReviewMainFlowView(setupStore: SetupStore(), uid: "preview-user") }

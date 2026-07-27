@@ -59,8 +59,10 @@ struct AppRootView: View {
                     SetupFlowView(store: setupStore) {
                         hasCompletedSetup = true
                     }
+                } else if let user = authentication.authenticatedUser {
+                    PayReviewMainFlowView(setupStore: setupStore, uid: user.id)
                 } else {
-                    PayReviewMainFlowView(setupStore: setupStore)
+                    LaunchView()
                 }
             }
         }
