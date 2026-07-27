@@ -34,9 +34,30 @@ final class AuthenticationTestViewModel: ObservableObject {
             Task { @MainActor in
                 self?.authenticatedUser = user
                 self?.hasResolvedAuthentication = true
+
+                #if DEBUG
+                // 開發用途：完全略過登入畫面。只有在裝置上完全沒有 persisted session
+                // （首次啟動、清過模擬器、或明確 signOut 過）時才會觸發一次；
+                // 一旦成功登入（含匿名），這個 uid 會被 Firebase 持久化，之後重跑不會再進這裡。
+                // 這段程式碼在 Release build 不會被編譯進去，正式登入按鈕完全不受影響。
+                if user == nil {
+                    await self?.signInAnonymouslyForDevelopment()
+                }
+                #endif
             }
         }
     }
+
+    #if DEBUG
+    private func signInAnonymouslyForDevelopment() async {
+        guard authenticatedUser == nil else { return }
+        do {
+            try await authenticationService.signInAnonymously()
+        } catch {
+            errorMessage = "開發用匿名登入失敗：\(error.localizedDescription)"
+        }
+    }
+    #endif
 
     func signInWithGoogle() async {
         await perform({ [authenticationService] in

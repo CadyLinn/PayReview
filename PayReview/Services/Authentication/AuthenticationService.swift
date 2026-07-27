@@ -15,6 +15,7 @@ protocol AuthenticationServicing {
     func createAccount(email: String, password: String) async throws
     func signIn(email: String, password: String) async throws
     func signInWithGoogle() async throws
+    func signInAnonymously() async throws
     func signOut() throws
 }
 
@@ -58,7 +59,7 @@ final class AuthenticationService: AuthenticationServicing {
 
     func createAccount(email: String, password: String) async throws {
         let credentials = try validatedCredentials(email: email, password: password)
-        _ = try await Auth.auth().createUser(
+        try await Auth.auth().createUser(
             withEmail: credentials.email,
             password: credentials.password
         )
@@ -66,7 +67,7 @@ final class AuthenticationService: AuthenticationServicing {
 
     func signIn(email: String, password: String) async throws {
         let credentials = try validatedCredentials(email: email, password: password)
-        _ = try await Auth.auth().signIn(
+        try await Auth.auth().signIn(
             withEmail: credentials.email,
             password: credentials.password
         )
@@ -95,6 +96,12 @@ final class AuthenticationService: AuthenticationServicing {
             accessToken: result.user.accessToken.tokenString
         )
         _ = try await Auth.auth().signIn(with: credential)
+    }
+
+    // 開發用途：僅供 DEBUG build 自動略過登入畫面使用，正式登入畫面不會呼叫這個方法。
+    // 對應 PRODUCT_PLAN_V0.2.md：正式版不提供訪客模式或匿名登入。
+    func signInAnonymously() async throws {
+        try await Auth.auth().signInAnonymously()
     }
 
     func signOut() throws {
