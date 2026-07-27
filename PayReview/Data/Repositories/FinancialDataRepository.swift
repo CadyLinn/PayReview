@@ -1,10 +1,14 @@
 import Foundation
 
-protocol FinancialDataRepository {
-    func loadSnapshot() async throws -> FinancialDataSnapshot
+protocol TransactionRepository {
+    func observeTransactions() async -> AsyncStream<[TransactionRecord]>
+    
+    func newTransactionID() -> String
+    
+    func addTransaction(_ transaction: TransactionRecord) async throws
 }
 
-enum FinancialDataRepositoryError: LocalizedError {
+enum FinancialDataRepositoryError: LocalizedError, Sendable {
     case unavailable
 
     var errorDescription: String? {
