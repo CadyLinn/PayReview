@@ -1,0 +1,166 @@
+import Foundation
+import Observation
+
+enum BudgetListState: Equatable {
+    case loading
+    case loaded([BudgetRecord])
+    case error
+}
+
+@MainActor
+@Observable
+final class BudgetListViewModel {
+    private(set) var state: BudgetListState = .loading
+
+    // v2 Phase 3: to show "剩餘預算/本月已消費" per budget, this view model also needs
+    // the transaction list — not just budgets. Same reasoning as `TransactionListViewModel.budgets`
+    // in Phase 2: this is supplementary data for a calculation, not something the screen's
+    // own loading/error state should depend on, so it's a separate property that just starts
+    // empty and fills in whenever the stream delivers something.
+    private(set) var transactions: [TransactionRecord] = []
+
+    private let repository: BudgetRepository
+    private let transactionRepository: TransactionRepository
+
+    init(repository: BudgetRepository, transactionRepository: TransactionRepository) {
+        self.repository = repository
+        self.transactionRepository = transactionRepository
+    }
+
+    /// Runs the budgets stream and the transactions stream side by side, same `async let`
+    /// pattern as `TransactionListViewModel.start()` — see that file for the full explanation
+    /// of why a plain sequential `for await` can't observe two streams at once.
+    func start() async {
+        async let budgetsTask: Void = observeBudgets()
+        async let transactionsTask: Void = observeTransactions()
+        _ = await (budgetsTask, transactionsTask)
+    }
+
+    private func observeBudgets() async {
+        for await latest in await repository.observeBudgets() {
+            state = .loaded(latest)
+        }
+        state = .error
+    }
+
+    private func observeTransactions() async {
+        for await latest in await transactionRepository.observeTransactions() {
+            transactions = latest
+        }
+    }
+
+    func addBudget(
+        name: String,
+        limitMinorUnits: Int64,
+        expectedMonthlyCount: Int
+    ) async {
+        let id = repository.newBudgetID()
+        let now = Date()
+        let budget = BudgetRecord(
+            id: id,
+            name: name,
+            limitMinorUnits: limitMinorUnits,
+            expectedMonthlyCount: expectedMonthlyCount,
+            schemaVersion: 1,
+            createdAt: now,
+            updatedAt: now
+        )
+        do {
+            try await repository.addBudget(budget)
+        } catch {
+            // v1/v2 keep this simple: log only, no dedicated error-presentation state yet.
+            print("Failed to add budget: \(error)")
+        }
+    }
+
+    /// One budget's progress for a given month. Everything the "類別" area in
+    /// `BudgetListView` needs to render is bundled here so the view stays dumb —
+    /// it just formats numbers, it doesn't decide what they mean.
+    struct BudgetProgress: Equatable {
+        /// Total spent this month under this budget, as a positive magnitude.
+        let spentMinorUnits: Int64
+        /// `budget.limitMinorUnits - spentMinorUnits`. Can go negative when over budget.
+        let remainingMinorUnits: Int64
+        /// How many expense transactions this month were filed under this budget.
+        let usedCount: Int
+        let expectedCount: Int
+        /// Suggested amount for the *next* purchase, or nil if already over budget
+        /// (the view shows "已超出預算" in that case instead of a number).
+        let suggestedNextAmountMinorUnits: Int64?
+    }
+
+    /// Computes `BudgetProgress` for `budget` by filtering `transactions` down to the
+    /// ones that (a) are tagged with this budget's id, (b) are expenses (negative
+    /// `minorUnits` — a stray income transaction someone mis-tagged with a budget
+    /// shouldn't count as "spending" or reduce the used-count), and (c) fall in
+    /// `referenceDate`'s month. `referenceDate` defaults to now; Phase 4's month
+    /// navigation will pass a different date instead of adding a second method.
+    ///
+    /// This is a synchronous, pure function over `transactions` + `budget` — no async,
+    /// no repository calls — which is what makes it cheap to call once per row every
+    /// time the view redraws, and easy to unit test directly without spinning up streams.
+    func progress(
+        for budget: BudgetRecord,
+        month referenceDate: Date = .now,
+        calendar: Calendar = .current
+    ) -> BudgetProgress {
+        let expenses = monthlyExpenses(for: budget, month: referenceDate, calendar: calendar)
+
+        let spentMinorUnits = expenses.reduce(Int64(0)) { $0 + (-$1.amount.minorUnits) }
+        let usedCount = expenses.count
+        let remainingMinorUnits = budget.limitMinorUnits - spentMinorUnits
+
+        let suggestedNextAmountMinorUnits: Int64?
+        if remainingMinorUnits <= 0 {
+            suggestedNextAmountMinorUnits = nil
+        } else {
+            // max(..., 1) avoids a divide-by-zero once the user has already hit or
+            // passed their expected count for the month but still has budget left —
+            // in that case we just suggest spending the whole remainder on "the next one".
+            let remainingCount = max(budget.expectedMonthlyCount - usedCount, 1)
+            suggestedNextAmountMinorUnits = remainingMinorUnits / Int64(remainingCount)
+        }
+
+        return BudgetProgress(
+            spentMinorUnits: spentMinorUnits,
+            remainingMinorUnits: remainingMinorUnits,
+            usedCount: usedCount,
+            expectedCount: budget.expectedMonthlyCount,
+            suggestedNextAmountMinorUnits: suggestedNextAmountMinorUnits
+        )
+    }
+
+    /// Phase 4: the transactions behind one budget's disclosure list, for a given month,
+    /// newest first — same ordering `TransactionListView` uses for the main "紀錄" list.
+    /// Reuses `monthlyExpenses(for:month:calendar:)` so the summary numbers in `progress(for:)`
+    /// and the detail list shown when a card is expanded can never disagree about which
+    /// transactions count: there is exactly one place that defines "belongs to this
+    /// budget, this month".
+    ///
+    /// Named `monthlyTransactions` rather than `transactions` on purpose — this type
+    /// already has a stored property called `transactions` (the full unfiltered list),
+    /// and giving the method a distinct name avoids relying on Swift's call-syntax
+    /// overload resolution to tell them apart.
+    func monthlyTransactions(
+        for budget: BudgetRecord,
+        month referenceDate: Date = .now,
+        calendar: Calendar = .current
+    ) -> [TransactionRecord] {
+        monthlyExpenses(for: budget, month: referenceDate, calendar: calendar)
+            .sorted { $0.occurredAt > $1.occurredAt }
+    }
+
+    /// Shared filter behind both `progress(for:)` and `transactions(for:)`: transactions
+    /// tagged with this budget, that are expenses (not income), that fall in the given month.
+    private func monthlyExpenses(
+        for budget: BudgetRecord,
+        month referenceDate: Date,
+        calendar: Calendar
+    ) -> [TransactionRecord] {
+        transactions.filter { transaction in
+            transaction.budgetId == budget.id
+                && transaction.amount.minorUnits < 0
+                && calendar.isDate(transaction.occurredAt, equalTo: referenceDate, toGranularity: .month)
+        }
+    }
+}

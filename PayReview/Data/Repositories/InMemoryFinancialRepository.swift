@@ -1,8 +1,15 @@
 import Foundation
 actor InMemoryFinancialRepository: TransactionRepository {
-    private var transactions: [TransactionRecord] = []
+    private var transactions: [TransactionRecord]
     private var continuations: [UUID: AsyncStream<[TransactionRecord]>.Continuation] = [:]
-    
+
+    /// `seed` lets callers (mainly SwiftUI #Preview) start this fake repository
+    /// pre-populated, so a preview can show a realistic "already has data" state
+    /// without going through async addTransaction() calls first.
+    init(seed: [TransactionRecord] = []) {
+        transactions = seed
+    }
+
     func observeTransactions() async -> AsyncStream<[TransactionRecord]> {
         // 1. 用 AsyncStream { continuation in ... } 建立一個 stream
         // 2. continuation.yield(transactions) 先送出目前的資料

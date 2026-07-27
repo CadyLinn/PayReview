@@ -9,11 +9,23 @@ struct TransactionListView: View {
     @State private var viewModel: TransactionListViewModel
     @State private var showsAddTransaction = false
 
-    init(uid: String) {
+    /// Designated initializer: takes both abstract repositories so previews/tests can
+    /// pass in-memory fakes instead of always hitting real Firestore.
+    init(repository: TransactionRepository, budgetRepository: BudgetRepository) {
         _viewModel = State(
             initialValue: TransactionListViewModel(
-                repository: FirestoreTransactionRepository(uid: uid)
+                repository: repository,
+                budgetRepository: budgetRepository
             )
+        )
+    }
+
+    /// Convenience initializer used by the real app — wires up the Firestore-backed
+    /// repositories for the given signed-in user.
+    init(uid: String) {
+        self.init(
+            repository: FirestoreTransactionRepository(uid: uid),
+            budgetRepository: FirestoreBudgetRepository(uid: uid)
         )
     }
 
@@ -64,7 +76,7 @@ struct TransactionListView: View {
                 }
             }
             .sheet(isPresented: $showsAddTransaction) {
-                AddTransactionView(viewModel: viewModel)
+                AddTransactionView(viewModel: viewModel, budgets: viewModel.budgets)
             }
         }
     }
@@ -80,10 +92,19 @@ struct TransactionListView: View {
         .padding(.vertical, 4)
     }
 
+    /// Looks up the budget name for a transaction's `budgetId`. Falls back to "未分類"
+    /// both when `budgetId` is nil (user picked "請選擇類別") and when the id doesn't
+    /// match any currently-loaded budget (e.g. it was deleted after this transaction
+    /// was recorded — v2 has no budget deletion yet, but this keeps the row safe either way).
+    private func budgetName(for transaction: TransactionRecord) -> String {
+        guard let budgetId = transaction.budgetId else { return "未分類" }
+        return viewModel.budgets.first { $0.id == budgetId }?.name ?? "未分類"
+    }
+
     private func transactionRow(_ transaction: TransactionRecord) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text(transaction.categoryLabel ?? "未分類")
+                Text(budgetName(for: transaction))
                     .font(.subheadline.weight(.semibold))
                 Spacer()
                 Text(amountText(forMinorUnits: transaction.amount.minorUnits))
@@ -110,11 +131,15 @@ struct TransactionListView: View {
 
 private struct AddTransactionView: View {
     let viewModel: TransactionListViewModel
+    let budgets: [BudgetRecord]
     @Environment(\.dismiss) private var dismiss
 
     @State private var kind: Kind = .expense
     @State private var amountText = ""
-    @State private var categoryLabel = ""
+    // v2 Phase 2: nil is the "請選擇類別" default (uncategorized). Using String? directly
+    // as the Picker's selection works because every `.tag(...)` below — including the
+    // "請選擇類別" row — is tagged with an Optional<String>, so they're all the same type.
+    @State private var selectedBudgetID: String?
     @State private var note = ""
     @State private var isSaving = false
 
@@ -136,8 +161,13 @@ private struct AddTransactionView: View {
                     TextField("金額", text: $amountText)
                         .keyboardType(.numberPad)
                 }
-                Section("類別（選填）") {
-                    TextField("例如：餐飲、交通、薪資", text: $categoryLabel)
+                Section("類別") {
+                    Picker("類別", selection: $selectedBudgetID) {
+                        Text("請選擇類別").tag(String?.none)
+                        ForEach(budgets) { budget in
+                            Text(budget.name).tag(Optional(budget.id))
+                        }
+                    }
                 }
                 Section("備註（選填）") {
                     TextField("備註", text: $note, axis: .vertical)
@@ -167,16 +197,62 @@ private struct AddTransactionView: View {
         guard let magnitude = amountValue else { return }
         isSaving = true
         let signedAmount = kind == .income ? magnitude : -magnitude
-        let trimmedCategory = categoryLabel.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
         Task {
             await viewModel.addTransaction(
                 amountMinorUnits: signedAmount,
-                categoryLabel: trimmedCategory.isEmpty ? nil : trimmedCategory,
+                budgetId: selectedBudgetID,
                 note: trimmedNote.isEmpty ? nil : trimmedNote
             )
             isSaving = false
             dismiss()
         }
     }
+}
+
+#Preview("有交易與預算") {
+    TransactionListView(
+        repository: InMemoryFinancialRepository(seed: [
+            TransactionRecord(
+                id: "t1",
+                amount: Money(minorUnits: 30_000, currencyCode: "TWD"),
+                budgetId: nil,
+                occurredAt: .now,
+                note: "七月薪水",
+                source: .manual,
+                schemaVersion: 1,
+                createdAt: .now,
+                updatedAt: .now
+            ),
+            TransactionRecord(
+                id: "t2",
+                amount: Money(minorUnits: -120, currencyCode: "TWD"),
+                budgetId: "1",
+                occurredAt: .now,
+                note: "午餐",
+                source: .manual,
+                schemaVersion: 1,
+                createdAt: .now,
+                updatedAt: .now
+            )
+        ]),
+        budgetRepository: InMemoryBudgetRepository(seed: [
+            BudgetRecord(
+                id: "1",
+                name: "餐飲",
+                limitMinorUnits: 3_000,
+                expectedMonthlyCount: 5,
+                schemaVersion: 1,
+                createdAt: .now,
+                updatedAt: .now
+            )
+        ])
+    )
+}
+
+#Preview("還沒有任何交易") {
+    TransactionListView(
+        repository: InMemoryFinancialRepository(),
+        budgetRepository: InMemoryBudgetRepository()
+    )
 }

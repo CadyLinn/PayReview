@@ -13,7 +13,8 @@ import Foundation
 struct TransactionListViewModelTests {
     @Test func addingTransactionUpdatesStateAndBalance() async throws {
         let repository = InMemoryFinancialRepository()
-        let viewModel = TransactionListViewModel(repository: repository)
+        let budgetRepository = InMemoryBudgetRepository()
+        let viewModel = TransactionListViewModel(repository: repository, budgetRepository: budgetRepository)
 
         let observation = Task { await viewModel.start() }
         // Give the stream a moment to deliver the initial (empty) snapshot before we
@@ -23,7 +24,7 @@ struct TransactionListViewModelTests {
 
         await viewModel.addTransaction(
             amountMinorUnits: 30_000,
-            categoryLabel: "薪資",
+            budgetId: "b1",
             note: nil
         )
         try await Task.sleep(for: .milliseconds(50))
@@ -35,7 +36,7 @@ struct TransactionListViewModelTests {
         }
 
         #expect(records.count == 1)
-        #expect(records.first?.categoryLabel == "薪資")
+        #expect(records.first?.budgetId == "b1")
         #expect(viewModel.balanceMinorUnits == 30_000)
 
         observation.cancel()
@@ -43,17 +44,42 @@ struct TransactionListViewModelTests {
 
     @Test func balanceSumsSignedAmountsAcrossMultipleTransactions() async throws {
         let repository = InMemoryFinancialRepository()
-        let viewModel = TransactionListViewModel(repository: repository)
+        let budgetRepository = InMemoryBudgetRepository()
+        let viewModel = TransactionListViewModel(repository: repository, budgetRepository: budgetRepository)
 
         let observation = Task { await viewModel.start() }
         try await Task.sleep(for: .milliseconds(50))
 
-        await viewModel.addTransaction(amountMinorUnits: 30_000, categoryLabel: "薪資", note: nil)
-        await viewModel.addTransaction(amountMinorUnits: -1_200, categoryLabel: "餐飲", note: nil)
-        await viewModel.addTransaction(amountMinorUnits: -800, categoryLabel: "交通", note: nil)
+        await viewModel.addTransaction(amountMinorUnits: 30_000, budgetId: "b1", note: nil)
+        await viewModel.addTransaction(amountMinorUnits: -1_200, budgetId: "b2", note: nil)
+        await viewModel.addTransaction(amountMinorUnits: -800, budgetId: "b3", note: nil)
         try await Task.sleep(for: .milliseconds(50))
 
         #expect(viewModel.balanceMinorUnits == 28_000)
+
+        observation.cancel()
+    }
+
+    @Test func budgetsPropertyReflectsBudgetRepositoryStream() async throws {
+        let repository = InMemoryFinancialRepository()
+        let budgetRepository = InMemoryBudgetRepository(seed: [
+            BudgetRecord(
+                id: "b1",
+                name: "餐飲",
+                limitMinorUnits: 3_000,
+                expectedMonthlyCount: 5,
+                schemaVersion: 1,
+                createdAt: .now,
+                updatedAt: .now
+            )
+        ])
+        let viewModel = TransactionListViewModel(repository: repository, budgetRepository: budgetRepository)
+
+        let observation = Task { await viewModel.start() }
+        try await Task.sleep(for: .milliseconds(50))
+
+        #expect(viewModel.budgets.count == 1)
+        #expect(viewModel.budgets.first?.name == "餐飲")
 
         observation.cancel()
     }

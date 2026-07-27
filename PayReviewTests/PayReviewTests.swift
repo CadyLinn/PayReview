@@ -21,7 +21,7 @@ struct FinancialRecordsTest {
         let original = TransactionRecord(
             id: "t1",
             amount: Money(minorUnits: 30000, currencyCode: "TWD"),
-            categoryLabel: "薪資",
+            budgetId: "b1",
             occurredAt: Date(timeIntervalSince1970: 1_700_000_000),
             note: "七月薪水",
             source: .manual,
@@ -38,7 +38,7 @@ struct FinancialRecordsTest {
         let original = TransactionRecord(
             id: "t1",
             amount: Money(minorUnits: 30000, currencyCode: "TWD"),
-            categoryLabel: nil,
+            budgetId: nil,
             occurredAt: Date(timeIntervalSince1970: 1_700_000_000),
             note: nil,
             source: .manual,
