@@ -37,4 +37,11 @@ final class FirestoreBudgetRepository: BudgetRepository {
     func addBudget(_ budget: BudgetRecord) async throws {
         try collection.document(budget.id).setData(from: budget)
     }
+
+    func updateBudget(_ budget: BudgetRecord) async throws {
+        // `setData(from:)` always overwrites the whole document by id, so creating
+        // and updating are the same Firestore call — the distinction only matters
+        // to the in-memory fake, which can't just overwrite-by-id as cheaply.
+        try collection.document(budget.id).setData(from: budget)
+    }
 }

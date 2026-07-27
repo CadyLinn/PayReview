@@ -40,4 +40,14 @@ actor InMemoryFinancialRepository: TransactionRepository {
             continuation.yield(transactions)
         }
     }
+
+    func updateTransaction(_ transaction: TransactionRecord) async throws {
+        guard let index = transactions.firstIndex(where: { $0.id == transaction.id }) else {
+            return
+        }
+        transactions[index] = transaction
+        for continuation in continuations.values {
+            continuation.yield(transactions)
+        }
+    }
 }

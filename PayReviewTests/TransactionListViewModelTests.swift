@@ -60,6 +60,51 @@ struct TransactionListViewModelTests {
         observation.cancel()
     }
 
+    /// Phase 5: editing a transaction should overwrite it in place (same id,
+    /// same occurredAt/createdAt) rather than appending a second one, and the
+    /// balance should reflect the new amount, not the old one.
+    @Test func updatingTransactionOverwritesInPlaceAndUpdatesBalance() async throws {
+        let repository = InMemoryFinancialRepository()
+        let budgetRepository = InMemoryBudgetRepository()
+        let viewModel = TransactionListViewModel(repository: repository, budgetRepository: budgetRepository)
+
+        let observation = Task { await viewModel.start() }
+        try await Task.sleep(for: .milliseconds(50))
+
+        await viewModel.addTransaction(amountMinorUnits: -500, budgetId: "b1", note: "午餐")
+        try await Task.sleep(for: .milliseconds(50))
+
+        guard case .loaded(let recordsBeforeEdit) = viewModel.state, let original = recordsBeforeEdit.first else {
+            Issue.record("Expected one transaction after adding it")
+            observation.cancel()
+            return
+        }
+
+        await viewModel.updateTransaction(
+            original,
+            amountMinorUnits: -800,
+            budgetId: "b2",
+            note: "晚餐"
+        )
+        try await Task.sleep(for: .milliseconds(50))
+
+        guard case .loaded(let recordsAfterEdit) = viewModel.state else {
+            Issue.record("Expected .loaded state, got \(viewModel.state)")
+            observation.cancel()
+            return
+        }
+
+        #expect(recordsAfterEdit.count == 1)
+        #expect(recordsAfterEdit.first?.id == original.id)
+        #expect(recordsAfterEdit.first?.amount.minorUnits == -800)
+        #expect(recordsAfterEdit.first?.budgetId == "b2")
+        #expect(recordsAfterEdit.first?.note == "晚餐")
+        #expect(recordsAfterEdit.first?.occurredAt == original.occurredAt)
+        #expect(viewModel.balanceMinorUnits == -800)
+
+        observation.cancel()
+    }
+
     @Test func budgetsPropertyReflectsBudgetRepositoryStream() async throws {
         let repository = InMemoryFinancialRepository()
         let budgetRepository = InMemoryBudgetRepository(seed: [

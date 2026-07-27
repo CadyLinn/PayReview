@@ -19,21 +19,36 @@ final class BudgetListViewModel {
     // empty and fills in whenever the stream delivers something.
     private(set) var transactions: [TransactionRecord] = []
 
+    // v2 Phase 5: the user-set total monthly budget, shown as the centered number
+    // field under the "計畫" title and used to cap how much any one budget's limit
+    // slider can reach. Same "supplementary, starts at a sensible default" treatment
+    // as `transactions` above — `.unset` (0) until the profile stream delivers
+    // something real.
+    private(set) var profile: ProfileRecord = .unset
+
     private let repository: BudgetRepository
     private let transactionRepository: TransactionRepository
+    private let profileRepository: ProfileRepository
 
-    init(repository: BudgetRepository, transactionRepository: TransactionRepository) {
+    init(
+        repository: BudgetRepository,
+        transactionRepository: TransactionRepository,
+        profileRepository: ProfileRepository
+    ) {
         self.repository = repository
         self.transactionRepository = transactionRepository
+        self.profileRepository = profileRepository
     }
 
-    /// Runs the budgets stream and the transactions stream side by side, same `async let`
-    /// pattern as `TransactionListViewModel.start()` — see that file for the full explanation
-    /// of why a plain sequential `for await` can't observe two streams at once.
+    /// Runs the budgets stream, the transactions stream, and the profile stream side
+    /// by side, same `async let` pattern as `TransactionListViewModel.start()` — see
+    /// that file for the full explanation of why a plain sequential `for await` can't
+    /// observe more than one stream at once.
     func start() async {
         async let budgetsTask: Void = observeBudgets()
         async let transactionsTask: Void = observeTransactions()
-        _ = await (budgetsTask, transactionsTask)
+        async let profileTask: Void = observeProfile()
+        _ = await (budgetsTask, transactionsTask, profileTask)
     }
 
     private func observeBudgets() async {
@@ -47,6 +62,40 @@ final class BudgetListViewModel {
         for await latest in await transactionRepository.observeTransactions() {
             transactions = latest
         }
+    }
+
+    private func observeProfile() async {
+        for await latest in await profileRepository.observeProfile() {
+            profile = latest
+        }
+    }
+
+    /// Persists a new total monthly budget. Called when the user submits the
+    /// centered number field under the "計畫" title.
+    func updateMonthlyBudgetLimit(minorUnits: Int64) async {
+        do {
+            try await profileRepository.setMonthlyBudgetLimit(minorUnits: minorUnits)
+        } catch {
+            print("Failed to update monthly budget limit: \(error)")
+        }
+    }
+
+    /// Sum of every existing budget's `limitMinorUnits`, optionally excluding one
+    /// (pass the budget's own id when editing it, so its current allocation doesn't
+    /// count against itself).
+    func allocatedMinorUnits(excluding excludedBudgetId: String? = nil) -> Int64 {
+        guard case .loaded(let budgets) = state else { return 0 }
+        return budgets
+            .filter { $0.id != excludedBudgetId }
+            .reduce(Int64(0)) { $0 + $1.limitMinorUnits }
+    }
+
+    /// How much of the total monthly budget is still unallocated — this becomes the
+    /// slider's upper bound in `AddBudgetView`. Clamped to 0 so that shrinking the
+    /// total budget below what's already allocated never produces a negative (and
+    /// therefore invalid) slider range.
+    func remainingAllocatableMinorUnits(excluding excludedBudgetId: String? = nil) -> Int64 {
+        max(0, profile.monthlyBudgetLimitMinorUnits - allocatedMinorUnits(excluding: excludedBudgetId))
     }
 
     func addBudget(
@@ -70,6 +119,31 @@ final class BudgetListViewModel {
         } catch {
             // v1/v2 keep this simple: log only, no dedicated error-presentation state yet.
             print("Failed to add budget: \(error)")
+        }
+    }
+
+    /// Phase 5: applies edits made in `AddBudgetView`'s edit mode. `original` carries
+    /// over `id` and `createdAt` unchanged — editing a budget shouldn't reset when it
+    /// was first created, only `updatedAt` and the three user-editable fields change.
+    func updateBudget(
+        _ original: BudgetRecord,
+        name: String,
+        limitMinorUnits: Int64,
+        expectedMonthlyCount: Int
+    ) async {
+        let updated = BudgetRecord(
+            id: original.id,
+            name: name,
+            limitMinorUnits: limitMinorUnits,
+            expectedMonthlyCount: expectedMonthlyCount,
+            schemaVersion: original.schemaVersion,
+            createdAt: original.createdAt,
+            updatedAt: Date()
+        )
+        do {
+            try await repository.updateBudget(updated)
+        } catch {
+            print("Failed to update budget: \(error)")
         }
     }
 

@@ -44,4 +44,8 @@ final class FirestoreTransactionRepository: TransactionRepository {
     func addTransaction(_ transaction: TransactionRecord) async throws {
         try collection.document(transaction.id).setData(from: transaction)
     }
+
+    func updateTransaction(_ transaction: TransactionRecord) async throws {
+        try collection.document(transaction.id).setData(from: transaction)
+    }
 }

@@ -7,7 +7,28 @@ import SwiftUI
 
 struct TransactionListView: View {
     @State private var viewModel: TransactionListViewModel
-    @State private var showsAddTransaction = false
+    // Phase 5: one piece of state for "which sheet, in which mode" instead of a
+    // separate Bool for "show add" plus something else for "show edit" — this way
+    // the two modes can never both be active, and there's only one `.sheet` to reason
+    // about. Same pattern as `BudgetListView.BudgetSheetMode`.
+    @State private var transactionSheetMode: TransactionSheetMode?
+
+    private enum TransactionSheetMode: Identifiable {
+        case new
+        case edit(TransactionRecord)
+
+        var id: String {
+            switch self {
+            case .new: return "new"
+            case .edit(let transaction): return transaction.id
+            }
+        }
+
+        var editingTransaction: TransactionRecord? {
+            if case .edit(let transaction) = self { return transaction }
+            return nil
+        }
+    }
 
     /// Designated initializer: takes both abstract repositories so previews/tests can
     /// pass in-memory fakes instead of always hitting real Firestore.
@@ -61,6 +82,13 @@ struct TransactionListView: View {
                     } else {
                         ForEach(transactions.sorted { $0.occurredAt > $1.occurredAt }) { transaction in
                             transactionRow(transaction)
+                                // Phase 5: tapping a row opens it in AddTransactionView's
+                                // edit mode. `.contentShape` extends the tappable area to
+                                // the whole row (including empty space), not just the text.
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    transactionSheetMode = .edit(transaction)
+                                }
                         }
                     }
                 }
@@ -68,15 +96,19 @@ struct TransactionListView: View {
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
-                        showsAddTransaction = true
+                        transactionSheetMode = .new
                     } label: {
                         Image(systemName: "plus")
                     }
                     .accessibilityLabel("新增交易")
                 }
             }
-            .sheet(isPresented: $showsAddTransaction) {
-                AddTransactionView(viewModel: viewModel, budgets: viewModel.budgets)
+            .sheet(item: $transactionSheetMode) { mode in
+                AddTransactionView(
+                    viewModel: viewModel,
+                    budgets: viewModel.budgets,
+                    editingTransaction: mode.editingTransaction
+                )
             }
         }
     }
@@ -132,15 +164,16 @@ struct TransactionListView: View {
 private struct AddTransactionView: View {
     let viewModel: TransactionListViewModel
     let budgets: [BudgetRecord]
+    let editingTransaction: TransactionRecord?
     @Environment(\.dismiss) private var dismiss
 
-    @State private var kind: Kind = .expense
-    @State private var amountText = ""
+    @State private var kind: Kind
+    @State private var amountText: String
     // v2 Phase 2: nil is the "請選擇類別" default (uncategorized). Using String? directly
     // as the Picker's selection works because every `.tag(...)` below — including the
     // "請選擇類別" row — is tagged with an Optional<String>, so they're all the same type.
     @State private var selectedBudgetID: String?
-    @State private var note = ""
+    @State private var note: String
     @State private var isSaving = false
 
     private enum Kind: String, CaseIterable, Hashable {
@@ -148,18 +181,41 @@ private struct AddTransactionView: View {
         case expense = "支出"
     }
 
+    /// When `editingTransaction` is provided, every field starts pre-filled from it
+    /// instead of blank — same "designated init sets up the starting @State" idea used
+    /// for `maxLimitMinorUnits`/`editingBudget` in `AddBudgetView`.
+    init(viewModel: TransactionListViewModel, budgets: [BudgetRecord], editingTransaction: TransactionRecord?) {
+        self.viewModel = viewModel
+        self.budgets = budgets
+        self.editingTransaction = editingTransaction
+        if let editingTransaction {
+            _kind = State(initialValue: editingTransaction.amount.minorUnits >= 0 ? .income : .expense)
+            _amountText = State(initialValue: String(abs(editingTransaction.amount.minorUnits)))
+            _selectedBudgetID = State(initialValue: editingTransaction.budgetId)
+            _note = State(initialValue: editingTransaction.note ?? "")
+        } else {
+            _kind = State(initialValue: .expense)
+            _amountText = State(initialValue: "")
+            _selectedBudgetID = State(initialValue: nil)
+            _note = State(initialValue: "")
+        }
+    }
+
     var body: some View {
         NavigationStack {
             Form {
+                // Order per request: 消費名稱 (was 備註, renamed + moved first) →
+                // 收入/支出 → 類別 → 金額. Purely a layout/label change — still the
+                // same underlying `note` field on TransactionRecord, still optional.
+                Section("消費名稱") {
+                    TextField("例如：午餐、計程車", text: $note, axis: .vertical)
+                        .lineLimit(2...4)
+                }
                 Section {
                     Picker("類型", selection: $kind) {
                         ForEach(Kind.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                     }
                     .pickerStyle(.segmented)
-                }
-                Section("金額") {
-                    TextField("金額", text: $amountText)
-                        .keyboardType(.numberPad)
                 }
                 Section("類別") {
                     Picker("類別", selection: $selectedBudgetID) {
@@ -169,23 +225,30 @@ private struct AddTransactionView: View {
                         }
                     }
                 }
-                Section("備註（選填）") {
-                    TextField("備註", text: $note, axis: .vertical)
-                        .lineLimit(2...4)
+                Section("金額") {
+                    TextField("金額", text: $amountText)
+                        .keyboardType(.numberPad)
                 }
             }
-            .navigationTitle(kind == .income ? "新增收入" : "新增支出")
+            .navigationTitle(navigationTitleText)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("儲存") { save() }
+                    Button(editingTransaction == nil ? "儲存" : "修改") { save() }
                         .disabled(amountValue == nil || isSaving)
                 }
             }
         }
+    }
+
+    private var navigationTitleText: String {
+        if editingTransaction != nil {
+            return "編輯" + (kind == .income ? "收入" : "支出")
+        }
+        return kind == .income ? "新增收入" : "新增支出"
     }
 
     private var amountValue: Int64? {
@@ -199,11 +262,20 @@ private struct AddTransactionView: View {
         let signedAmount = kind == .income ? magnitude : -magnitude
         let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
         Task {
-            await viewModel.addTransaction(
-                amountMinorUnits: signedAmount,
-                budgetId: selectedBudgetID,
-                note: trimmedNote.isEmpty ? nil : trimmedNote
-            )
+            if let editingTransaction {
+                await viewModel.updateTransaction(
+                    editingTransaction,
+                    amountMinorUnits: signedAmount,
+                    budgetId: selectedBudgetID,
+                    note: trimmedNote.isEmpty ? nil : trimmedNote
+                )
+            } else {
+                await viewModel.addTransaction(
+                    amountMinorUnits: signedAmount,
+                    budgetId: selectedBudgetID,
+                    note: trimmedNote.isEmpty ? nil : trimmedNote
+                )
+            }
             isSaving = false
             dismiss()
         }

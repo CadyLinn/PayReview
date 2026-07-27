@@ -7,20 +7,59 @@ import SwiftUI
 
 struct BudgetListView: View {
     @State private var viewModel: BudgetListViewModel
-    @State private var showsAddBudget = false
+    // Phase 5: which sheet (if any) is showing, and in which mode. One piece of
+    // state instead of two separate Bools/optionals so "add" and "edit" can never
+    // both be true at once, and so there's only one `.sheet` modifier to reason about.
+    @State private var budgetSheetMode: BudgetSheetMode?
+    // Phase 5: which budget cards are currently expanded to show their monthly
+    // transaction list. A Set of ids (not one Bool per card) because the number of
+    // budgets is dynamic.
+    @State private var expandedBudgetIDs: Set<String> = []
     // Phase 4: which month the whole page (every budget's summary + disclosure list)
     // is currently showing. This is page-level, shared UI state — not something the
     // view model owns, since it's purely "what is the user looking at right now" and
     // has no bearing on what data gets fetched (all of this month's transactions are
     // already loaded; we're just filtering client-side).
     @State private var selectedMonth: Date = .now
+    // Phase 5: the text in the centered total-budget field under the title. Kept as
+    // its own @State (not read directly from the view model on every redraw) so the
+    // user can type freely without each keystroke round-tripping through Int64
+    // parsing; see `totalBudgetInputHeader` for how this stays in sync with the
+    // view model's `profile.monthlyBudgetLimitMinorUnits`.
+    @State private var totalBudgetText: String = "0"
+    @FocusState private var isEditingTotalBudget: Bool
 
-    /// Designated initializer: takes both abstract repositories so previews/tests can
-    /// pass in-memory fakes instead of always hitting real Firestore. `transactionRepository`
-    /// was added in Phase 3 so this screen can compute "剩餘預算/本月已消費" per budget.
-    init(repository: BudgetRepository, transactionRepository: TransactionRepository) {
+    private enum BudgetSheetMode: Identifiable {
+        case new
+        case edit(BudgetRecord)
+
+        var id: String {
+            switch self {
+            case .new: return "new"
+            case .edit(let budget): return budget.id
+            }
+        }
+
+        var editingBudget: BudgetRecord? {
+            if case .edit(let budget) = self { return budget }
+            return nil
+        }
+    }
+
+    /// Designated initializer: takes all three abstract repositories so previews/tests
+    /// can pass in-memory fakes instead of always hitting real Firestore.
+    /// `profileRepository` was added in Phase 5 for the total monthly budget.
+    init(
+        repository: BudgetRepository,
+        transactionRepository: TransactionRepository,
+        profileRepository: ProfileRepository
+    ) {
         _viewModel = State(
-            initialValue: BudgetListViewModel(repository: repository, transactionRepository: transactionRepository)
+            initialValue: BudgetListViewModel(
+                repository: repository,
+                transactionRepository: transactionRepository,
+                profileRepository: profileRepository
+            )
         )
     }
 
@@ -29,7 +68,8 @@ struct BudgetListView: View {
     init(uid: String) {
         self.init(
             repository: FirestoreBudgetRepository(uid: uid),
-            transactionRepository: FirestoreTransactionRepository(uid: uid)
+            transactionRepository: FirestoreTransactionRepository(uid: uid),
+            profileRepository: FirestoreProfileRepository(uid: uid)
         )
     }
 
@@ -55,6 +95,7 @@ struct BudgetListView: View {
             )
         case .loaded(let budgets):
             VStack(spacing: 0) {
+                totalBudgetInputHeader
                 monthNavigationHeader
                 List {
                     Section("每月預算") {
@@ -71,17 +112,79 @@ struct BudgetListView: View {
                 .toolbar {
                     ToolbarItem(placement: .primaryAction) {
                         Button {
-                            showsAddBudget = true
+                            budgetSheetMode = .new
                         } label: {
                             Image(systemName: "plus")
                         }
                         .accessibilityLabel("新增預算")
                     }
                 }
-                .sheet(isPresented: $showsAddBudget) {
-                    AddBudgetView(viewModel: viewModel)
+                .sheet(item: $budgetSheetMode) { mode in
+                    AddBudgetView(
+                        viewModel: viewModel,
+                        // Computed once, at presentation time, from the id being
+                        // edited (or nil for "new") — see remainingAllocatableMinorUnits
+                        // for why `excluding:` matters when editing.
+                        maxLimitMinorUnits: viewModel.remainingAllocatableMinorUnits(
+                            excluding: mode.editingBudget?.id
+                        ),
+                        editingBudget: mode.editingBudget
+                    )
                 }
             }
+        }
+    }
+
+    /// Phase 5: the centered, underlined number field under the "計畫" title for
+    /// setting this month's total budget. Every budget card's limit slider is capped
+    /// by how much of this total hasn't been allocated yet.
+    private var totalBudgetInputHeader: some View {
+        VStack(spacing: 4) {
+            Text("本月總預算")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            TextField("0", text: $totalBudgetText)
+                .keyboardType(.numberPad)
+                .multilineTextAlignment(.center)
+                .font(.system(size: 32, weight: .bold, design: .rounded))
+                .focused($isEditingTotalBudget)
+                .frame(minWidth: 140)
+                .padding(.bottom, 4)
+                .overlay(alignment: .bottom) {
+                    Rectangle()
+                        .fill(Color.secondary)
+                        .frame(height: 1)
+                }
+                .onSubmit { commitTotalBudget() }
+                .onChange(of: isEditingTotalBudget) { _, isFocused in
+                    // Committing on "stopped editing" (not on every keystroke) means
+                    // we're not writing to Firestore on every digit typed, and lets
+                    // the user clear the field and retype without it being rejected
+                    // mid-edit.
+                    if !isFocused {
+                        commitTotalBudget()
+                    }
+                }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 12)
+        .padding(.bottom, 4)
+        // Pull the field's text from the view model only while the user isn't
+        // actively typing in it — otherwise a stream update arriving mid-edit
+        // (even one caused by our own commitTotalBudget()) would overwrite
+        // whatever they're in the middle of typing.
+        .onChange(of: viewModel.profile.monthlyBudgetLimitMinorUnits) { _, newValue in
+            if !isEditingTotalBudget {
+                totalBudgetText = String(newValue)
+            }
+        }
+    }
+
+    private func commitTotalBudget() {
+        let parsed = Int64(totalBudgetText) ?? 0
+        totalBudgetText = String(parsed)
+        Task {
+            await viewModel.updateMonthlyBudgetLimit(minorUnits: parsed)
         }
     }
 
@@ -119,40 +222,76 @@ struct BudgetListView: View {
         Calendar.current.date(byAdding: .month, value: offset, to: selectedMonth) ?? selectedMonth
     }
 
-    /// Phase 3's summary area, now the *label* of a Phase 4 `DisclosureGroup` — tapping
-    /// it expands to that budget's transaction list for `selectedMonth` (below).
+    /// Phase 5: the summary area now has two independent tap targets instead of being
+    /// one big `DisclosureGroup` label. Tapping the name/numbers opens the edit sheet;
+    /// tapping the chevron only expands/collapses the transaction list below. A plain
+    /// `DisclosureGroup` can't do this — its whole label is one tap target for
+    /// toggling — so this is a custom VStack with its own gesture handling instead.
     private func budgetRow(_ budget: BudgetRecord) -> some View {
         let progress = viewModel.progress(for: budget, month: selectedMonth)
-        return DisclosureGroup {
-            budgetTransactionList(for: budget)
-        } label: {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(budget.name)
-                    .font(.subheadline.weight(.semibold))
+        let isExpanded = expandedBudgetIDs.contains(budget.id)
 
-                Text("剩餘 \(amountText(progress.remainingMinorUnits)) / \(amountText(budget.limitMinorUnits))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(budget.name)
+                        .font(.subheadline.weight(.semibold))
 
-                Text("已消費 \(progress.usedCount) / \(progress.expectedCount) 次")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    Text("剩餘 \(amountText(progress.remainingMinorUnits)) / \(amountText(budget.limitMinorUnits))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
 
-                if let suggested = progress.suggestedNextAmountMinorUnits {
-                    Text("下一筆建議消費 \(amountText(suggested))")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.blue)
-                } else {
-                    Text("已超出預算")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.red)
+                    Text("已消費 \(progress.usedCount) / \(progress.expectedCount) 次")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    if let suggested = progress.suggestedNextAmountMinorUnits {
+                        Text("下一筆建議消費 \(amountText(suggested))")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.blue)
+                    } else {
+                        Text("已超出預算")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.red)
+                    }
                 }
+                // `.contentShape` makes the whole VStack tappable — including the
+                // empty space between lines of text, not just the glyphs themselves.
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    budgetSheetMode = .edit(budget)
+                }
+
+                Spacer(minLength: 0)
+
+                Button {
+                    withAnimation {
+                        if isExpanded {
+                            expandedBudgetIDs.remove(budget.id)
+                        } else {
+                            expandedBudgetIDs.insert(budget.id)
+                        }
+                    }
+                } label: {
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .foregroundStyle(.secondary)
+                }
+                // `.plain` keeps this button's own tap area self-contained. Without
+                // it, some default button styles let the tap "bubble up" and make
+                // the whole row act like one button again, defeating the split above.
+                .buttonStyle(.plain)
             }
             .padding(.vertical, 4)
+
+            if isExpanded {
+                budgetTransactionList(for: budget)
+                    .padding(.leading, 8)
+                    .padding(.bottom, 4)
+            }
         }
     }
 
-    /// The disclosure content: `selectedMonth`'s expenses under this budget, newest
+    /// The expanded content: `selectedMonth`'s expenses under this budget, newest
     /// first — same row shape as `TransactionListView.transactionRow` so switching
     /// between "紀錄" and an expanded budget card feels like the same kind of list.
     @ViewBuilder
@@ -195,27 +334,39 @@ struct BudgetListView: View {
 
 private struct AddBudgetView: View {
     let viewModel: BudgetListViewModel
+    /// Upper bound for the amount slider, already adjusted (in the initializer) to
+    /// include this budget's own current allocation when editing.
+    let maxLimitMinorUnits: Int64
+    let editingBudget: BudgetRecord?
     @Environment(\.dismiss) private var dismiss
 
-    @State private var name = ""
-    @State private var limitText = ""
-    @State private var expectedCountText = ""
+    @State private var name: String
+    @State private var limitMinorUnits: Int64
+    @State private var expectedMonthlyCount: Int
+    @State private var showsCountSlider = false
     @State private var isSaving = false
 
-    private var limitValue: Int64? {
-        guard let value = Int64(limitText), value > 0 else { return nil }
-        return value
-    }
+    /// The "預計消費次數" slider needs *some* upper bound to be a valid SwiftUI
+    /// `Slider`. The spec only specified a step of 1, not a maximum, so 31 (the most
+    /// days in a month) is a generous-but-finite cap on "how many times a month".
+    private let maxExpectedCount = 31
 
-    private var expectedCountValue: Int? {
-        guard let value = Int(expectedCountText), value > 0 else { return nil }
-        return value
+    /// `maxLimitMinorUnits` is passed in as "how much of the total budget is unallocated,
+    /// *excluding* this budget's own current limit" (see
+    /// `BudgetListViewModel.remainingAllocatableMinorUnits(excluding:)`). To let the
+    /// slider represent "keep it the same or raise/lower it", the editable range needs
+    /// this budget's current allocation added back in.
+    init(viewModel: BudgetListViewModel, maxLimitMinorUnits: Int64, editingBudget: BudgetRecord?) {
+        self.viewModel = viewModel
+        self.editingBudget = editingBudget
+        self.maxLimitMinorUnits = maxLimitMinorUnits + (editingBudget?.limitMinorUnits ?? 0)
+        _name = State(initialValue: editingBudget?.name ?? "")
+        _limitMinorUnits = State(initialValue: editingBudget?.limitMinorUnits ?? 0)
+        _expectedMonthlyCount = State(initialValue: editingBudget?.expectedMonthlyCount ?? 1)
     }
 
     private var canSave: Bool {
-        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && limitValue != nil
-            && expectedCountValue != nil
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && limitMinorUnits > 0
     }
 
     var body: some View {
@@ -224,39 +375,88 @@ private struct AddBudgetView: View {
                 Section("預算名稱") {
                     TextField("例如：餐飲、交通", text: $name)
                 }
+
                 Section("每月預算金額") {
-                    TextField("金額", text: $limitText)
-                        .keyboardType(.numberPad)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(amountText(limitMinorUnits))
+                            .font(.title3.weight(.semibold))
+                        if maxLimitMinorUnits > 0 {
+                            Slider(
+                                value: Binding(
+                                    get: { Double(limitMinorUnits) },
+                                    set: { limitMinorUnits = Int64(($0 / 100).rounded()) * 100 }
+                                ),
+                                in: 0...Double(maxLimitMinorUnits),
+                                step: 100
+                            )
+                        } else {
+                            Text("尚未設定本月總預算，或本月總預算已全數分配完畢")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
+
                 Section("每月預計消費次數") {
-                    TextField("次數", text: $expectedCountText)
-                        .keyboardType(.numberPad)
+                    Button {
+                        showsCountSlider.toggle()
+                    } label: {
+                        HStack {
+                            Text("\(expectedMonthlyCount) 次")
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            Image(systemName: showsCountSlider ? "chevron.up" : "chevron.down")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    if showsCountSlider {
+                        Slider(
+                            value: Binding(
+                                get: { Double(expectedMonthlyCount) },
+                                set: { expectedMonthlyCount = Int($0.rounded()) }
+                            ),
+                            in: 1...Double(maxExpectedCount),
+                            step: 1
+                        )
+                    }
                 }
             }
-            .navigationTitle("新增預算")
+            .navigationTitle(editingBudget == nil ? "新增預算" : "編輯預算")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("儲存") { save() }
+                    Button(editingBudget == nil ? "儲存" : "修改") { save() }
                         .disabled(!canSave || isSaving)
                 }
             }
         }
     }
 
+    private func amountText(_ minorUnits: Int64) -> String {
+        "NT$\(minorUnits)"
+    }
+
     private func save() {
-        guard let limit = limitValue, let expectedCount = expectedCountValue else { return }
         isSaving = true
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         Task {
-            await viewModel.addBudget(
-                name: trimmedName,
-                limitMinorUnits: limit,
-                expectedMonthlyCount: expectedCount
-            )
+            if let editingBudget {
+                await viewModel.updateBudget(
+                    editingBudget,
+                    name: trimmedName,
+                    limitMinorUnits: limitMinorUnits,
+                    expectedMonthlyCount: expectedMonthlyCount
+                )
+            } else {
+                await viewModel.addBudget(
+                    name: trimmedName,
+                    limitMinorUnits: limitMinorUnits,
+                    expectedMonthlyCount: expectedMonthlyCount
+                )
+            }
             isSaving = false
             dismiss()
         }
@@ -334,13 +534,20 @@ private struct AddBudgetView: View {
                 createdAt: .now,
                 updatedAt: .now
             )
-        ])
+        ]),
+        profileRepository: InMemoryProfileRepository(seed: ProfileRecord(
+            monthlyBudgetLimitMinorUnits: 10_000,
+            schemaVersion: 1,
+            createdAt: .now,
+            updatedAt: .now
+        ))
     )
 }
 
 #Preview("還沒有預算") {
     BudgetListView(
         repository: InMemoryBudgetRepository(),
-        transactionRepository: InMemoryFinancialRepository()
+        transactionRepository: InMemoryFinancialRepository(),
+        profileRepository: InMemoryProfileRepository()
     )
 }

@@ -37,3 +37,25 @@ struct BudgetRecord: Codable, Identifiable, Equatable, Sendable {
     let createdAt: Date
     let updatedAt: Date
 }
+
+// v2 Phase 5: a single per-user document (not a collection) holding whole-app
+// settings that aren't tied to any one transaction or budget. Today that's just
+// the total monthly budget the user allocates individual BudgetRecords out of;
+// more settings can be added to this same document later without a schema
+// migration, since it's already a flexible "one document per user" shape.
+struct ProfileRecord: Codable, Equatable, Sendable {
+    let monthlyBudgetLimitMinorUnits: Int64
+    let schemaVersion: Int
+    let createdAt: Date
+    let updatedAt: Date
+
+    /// What a brand-new user has before they've ever set a total budget — 0, not
+    /// some placeholder Optional, so the rest of the app (sliders, arithmetic) never
+    /// has to unwrap a "maybe there's no profile yet" case.
+    static let unset = ProfileRecord(
+        monthlyBudgetLimitMinorUnits: 0,
+        schemaVersion: 1,
+        createdAt: .now,
+        updatedAt: .now
+    )
+}

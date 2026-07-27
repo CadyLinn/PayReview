@@ -96,4 +96,32 @@ final class TransactionListViewModel {
             print("Failed to add transaction: \(error)")
         }
     }
+
+    /// Phase 5: applies edits made in `AddTransactionView`'s edit mode. `original`
+    /// carries over `id`, `occurredAt`, `source`, `schemaVersion`, and `createdAt`
+    /// unchanged — editing a transaction's amount/category/note shouldn't change
+    /// when it happened or when it was first recorded.
+    func updateTransaction(
+        _ original: TransactionRecord,
+        amountMinorUnits: Int64,
+        budgetId: String?,
+        note: String?
+    ) async {
+        let updated = TransactionRecord(
+            id: original.id,
+            amount: Money(minorUnits: amountMinorUnits, currencyCode: original.amount.currencyCode),
+            budgetId: budgetId,
+            occurredAt: original.occurredAt,
+            note: note,
+            source: original.source,
+            schemaVersion: original.schemaVersion,
+            createdAt: original.createdAt,
+            updatedAt: Date()
+        )
+        do {
+            try await repository.updateTransaction(updated)
+        } catch {
+            print("Failed to update transaction: \(error)")
+        }
+    }
 }

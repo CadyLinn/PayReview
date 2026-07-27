@@ -36,4 +36,17 @@ actor InMemoryBudgetRepository: BudgetRepository {
             continuation.yield(budgets)
         }
     }
+
+    func updateBudget(_ budget: BudgetRecord) async throws {
+        guard let index = budgets.firstIndex(where: { $0.id == budget.id }) else {
+            // Editing something that no longer exists (e.g. deleted on another
+            // device in between) — v2 keeps this simple and just drops the update
+            // rather than inventing a new error-presentation path.
+            return
+        }
+        budgets[index] = budget
+        for continuation in continuations.values {
+            continuation.yield(budgets)
+        }
+    }
 }
