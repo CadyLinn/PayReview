@@ -1,0 +1,8 @@
+{
+  "name": "payreview-rules-tests",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^3"
+  }
+}

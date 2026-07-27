@@ -3,4 +3,5 @@ DerivedData/
 firebase-debug*.log
 functions/lib/
 functions/node_modules/
+firebase/rules-tests/node_modules/
 xcuserdata/
