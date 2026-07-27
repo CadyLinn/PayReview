@@ -1,5 +1,7 @@
 # PayReview 技術選型 v0.2
 
+> **v1 重建範圍說明**：這份文件描述的是完整 MVP 的技術藍圖，涵蓋許多目前還沒實作的功能（計畫、目標、預算、FinanceEngine、決策快照等）。目前實際在做的 v1 重建只涵蓋「純記帳」：交易（金額正負號代表收入/支出）與衍生餘額。v1 的實際資料模型見 `docs/firestore-data-model.md`，v2 才要做的項目與延後原因見 `docs/deferred-v2-scope.md`，重建計畫見 `REBUILD_PLAN_V1.md`。閱讀本文件時，請以那三份文件為準判斷「現在真的做到哪裡」。
+
 ## 技術目標
 
 PayReview MVP 採 SwiftUI + Firebase，並維持本機可完成消費前評估。
@@ -17,7 +19,7 @@ PayReview MVP 採 SwiftUI + Firebase，並維持本機可完成消費前評估�
 | 層級 | 選擇 | 用途 |
 | --- | --- | --- |
 | App | Swift、SwiftUI | iOS 原生介面、導航與動畫 |
-| 財務計算 | 獨立 Swift `FinanceEngine` | 預算、目標日期與恢復方案 |
+| 財務計算 | 獨立 Swift `FinanceEngine` | 預算、目標日期與恢復方案（v2 範圍，v1 尚未實作，見 `docs/deferred-v2-scope.md`） |
 | 資料庫 | Cloud Firestore | 正式財務資料、持久化快取與跨裝置同步 |
 | 帳號 | Firebase Authentication | Email、Google 登入與帳號生命週期 |
 | 後端工作 | Firebase Cloud Functions、Google Cloud Tasks | 帳號狀態建立、durable 帳號刪除與其他不可信任客戶端的操作 |
@@ -43,10 +45,10 @@ MVP 可提供使用者手動輸入的方案比較，計算實付金額、額外�
 
 使用 SwiftUI 建立：
 
-- 今天：安心可花額度、下一筆預期支出、目標狀態與評估入口。
-- 評估：快速金額輸入、預算與目標影響、恢復方案、購買或延後選項。
-- 計畫：目標、收入週期、固定支出、彈性預算與安全緩衝。
-- 紀錄：收入、支出、轉帳、類別、標籤與回顧。
+- 今天：安心可花額度、下一筆預期支出、目標狀態與評估入口（v2 範圍，畫面目前還在，但背後資料是本機假資料，未串接真實交易）。
+- 評估：快速金額輸入、預算與目標影響、恢復方案、購買或延後選項（v2 範圍，同上）。
+- 計畫：目標、收入週期、固定支出、彈性預算與安全緩衝（v2 範圍；v1 畫面只更新本機 `SetupStore`，沒有 Firestore 同步）。
+- 紀錄：v1 實際範圍是交易列表（收入/支出、金額正負號、可選自由文字 `categoryLabel`）與衍生餘額，串接真實 Firestore 資料。轉帳、標籤、結構化分類是 v2 範圍。
 - 設定：登入、訂閱、隱私、資料匯出、帳號刪除與客服。通知設定待 P1 加入本機通知時再提供。
 
 ### 原生 SwiftUI 元件原則
@@ -72,6 +74,8 @@ MVP 可提供使用者手動輸入的方案比較，計算實付金額、額外�
 
 ## FinanceEngine
 
+> v2 範圍，v1 尚未實作。以下描述設計意圖，供之後開發參考。
+
 建立不依賴 SwiftUI、Firebase、登入或分析服務的 Swift 模組。
 
 職責：
@@ -96,25 +100,16 @@ Cloud Firestore 是正式財務資料的唯一同步來源。Apple 平台預設�
 
 尚未確認的 `SpendScenario` 保持本機暫存，不寫入 Firestore。只有使用者選擇保存決策或「購買並記錄」後，才寫入正式資料。
 
-建議資料路徑：
+完整 MVP 的資料路徑規劃（financialPlans、incomeCycles、goals、plannedExpenses、flexibleBudgets、transfers、categories、tags、decisionSnapshots、deferredPurchases 等）已經延後到 v2，不在此重複列出，以免跟實際狀態脫節。v1 目前只有以下路徑：
 
 ```text
-deletionRequests/{requestId}  # server-owned; status only
 users/{uid}/profile/main
-users/{uid}/financialPlans/{planId}
-users/{uid}/incomeCycles/{incomeCycleId}
-users/{uid}/goals/{goalId}
-users/{uid}/plannedExpenses/{expenseId}
-users/{uid}/flexibleBudgets/{budgetId}
 users/{uid}/transactions/{transactionId}
-users/{uid}/transfers/{transferId}
-users/{uid}/categories/{categoryId}
-users/{uid}/tags/{tagId}
-users/{uid}/decisionSnapshots/{snapshotId}
-users/{uid}/deferredPurchases/{purchaseId}
 ```
 
-比較方案與 `SpendScenario` 在確認前只保留於本機，不寫入 Firestore，也不得自動建立交易。
+完整欄位定義與設計理由見 `docs/firestore-data-model.md`（唯一權威來源）；v2 才要做的路徑與延後原因見 `docs/deferred-v2-scope.md`。
+
+比較方案與 `SpendScenario` 在確認前只保留於本機，不寫入 Firestore，也不得自動建立交易（此為 v2 評估功能的設計原則，v1 尚未實作評估流程本身）。
 
 ## Firebase Authentication
 
@@ -216,6 +211,8 @@ Firebase Authentication session 是 MVP 的帳號存取邊界。Security Rules �
 需要分析金額影響時，只傳送經隱私審查的區間。Crashlytics log 與 custom key 也必須遵守相同限制。
 
 ## 建議專案結構
+
+以下是完整 MVP 的目標結構。v1 目前實際只有 `Core/Domain/`（純記帳 domain model）、`Data/Repositories/`（`TransactonRepository` 與其實作）、`Features/Ledger/`（交易列表畫面與 ViewModel），還沒有 `Core/FinanceEngine/`；其餘 `Features/` 子資料夾沿用重建前就存在的舊畫面（`Onboarding`、`Setup`、`Daily` 內的分頁），尚未依下方結構重新命名或搬移。
 
 ```text
 PayReview/
