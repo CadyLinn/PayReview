@@ -1,5 +1,7 @@
 # Firestore data model (v1 — pure ledger)
 
+> **v2 update (分類預算 Phase 1–2):** a `budgets` collection now exists (`users/{uid}/budgets/{budgetId}`), and `Transaction.categoryLabel` (free-text) has been replaced by `Transaction.budgetId` (a reference to a `BudgetRecord.id`, nil = uncategorized). The rest of this document still accurately describes v1 scope and is kept for history; see `REBUILD_PLAN_V2.md` for the current schema additions.
+
 Cloud Firestore is PayReview's authoritative financial-data store. Every user-owned document is scoped below `users/{uid}`. Money is stored as integer minor units, never as `Double` or `Float`.
 
 This v1 scope covers pure bookkeeping only: transactions and a derived balance. Category is not a managed entity in v1 — there is no `categories` collection, no `Category` domain model, and no category CRUD screen. Each transaction instead carries a free-text `categoryLabel` for lightweight grouping, aggregated client-side when needed. Everything else that was previously planned here (financial plans, income cycles, goals, planned expenses, flexible budgets, tags, transfers, decision snapshots, deferred purchases, structured categories, and the account-deletion job queue) has been deferred, not deleted. See `docs/deferred-v2-scope.md` for what was cut and why, and when to bring each piece back.
