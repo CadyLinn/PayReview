@@ -109,6 +109,12 @@ struct BudgetListView: View {
                         }
                     }
                 }
+                // The number pad for the total-budget field has no Return key and
+                // nothing else on this screen was dismissing it. `.immediately` tells
+                // the List (a scroll view) to resign the keyboard the moment the user
+                // taps or drags anywhere inside it — e.g. tapping a budget card while
+                // the total-budget field is still focused.
+                .scrollDismissesKeyboard(.immediately)
                 .toolbar {
                     ToolbarItem(placement: .primaryAction) {
                         Button {
@@ -163,6 +169,19 @@ struct BudgetListView: View {
                     // mid-edit.
                     if !isFocused {
                         commitTotalBudget()
+                    }
+                }
+                // The number pad has no Return key, so there's normally no way to
+                // dismiss it other than tapping elsewhere. This adds an explicit
+                // "完成" button to the keyboard's accessory bar — setting
+                // `isEditingTotalBudget = false` both dismisses the keyboard (SwiftUI
+                // resigns focus) and triggers the onChange above to commit the value.
+                .toolbar {
+                    ToolbarItemGroup(placement: .keyboard) {
+                        Spacer()
+                        Button("完成") {
+                            isEditingTotalBudget = false
+                        }
                     }
                 }
         }

@@ -133,21 +133,30 @@ struct TransactionListView: View {
         return viewModel.budgets.first { $0.id == budgetId }?.name ?? "未分類"
     }
 
+    /// The row's title — per request, this is now the transaction's own name
+    /// (`note`, labeled "消費名稱" in AddTransactionView), not its category. Falls
+    /// back to a placeholder since `note` is still an optional field under the hood.
+    private func transactionName(for transaction: TransactionRecord) -> String {
+        guard let note = transaction.note, !note.isEmpty else { return "未命名交易" }
+        return note
+    }
+
     private func transactionRow(_ transaction: TransactionRecord) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text(budgetName(for: transaction))
+                Text(transactionName(for: transaction))
                     .font(.subheadline.weight(.semibold))
                 Spacer()
                 Text(amountText(forMinorUnits: transaction.amount.minorUnits))
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(transaction.amount.minorUnits >= 0 ? .green : .red)
             }
-            if let note = transaction.note, !note.isEmpty {
-                Text(note)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            // Category now sits below the title, unconditionally — it was the title
+            // before (budgetName was never optional-guarded), so nothing is lost by
+            // always showing it here.
+            Text(budgetName(for: transaction))
+                .font(.caption)
+                .foregroundStyle(.secondary)
             Text(transaction.occurredAt.formatted(date: .abbreviated, time: .omitted))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
