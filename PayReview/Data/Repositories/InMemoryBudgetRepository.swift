@@ -49,4 +49,11 @@ actor InMemoryBudgetRepository: BudgetRepository {
             continuation.yield(budgets)
         }
     }
+
+    func deleteBudget(id: String) async throws {
+        budgets.removeAll { $0.id == id }
+        for continuation in continuations.values {
+            continuation.yield(budgets)
+        }
+    }
 }

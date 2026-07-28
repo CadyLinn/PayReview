@@ -44,4 +44,8 @@ final class FirestoreBudgetRepository: BudgetRepository {
         // to the in-memory fake, which can't just overwrite-by-id as cheaply.
         try collection.document(budget.id).setData(from: budget)
     }
+
+    func deleteBudget(id: String) async throws {
+        try await collection.document(id).delete()
+    }
 }

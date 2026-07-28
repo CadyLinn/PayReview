@@ -97,6 +97,7 @@ struct BudgetListView: View {
             VStack(spacing: 0) {
                 totalBudgetInputHeader
                 monthNavigationHeader
+                budgetOverviewBar
                 List {
                     Section("每月預算") {
                         if budgets.isEmpty {
@@ -241,6 +242,132 @@ struct BudgetListView: View {
         Calendar.current.date(byAdding: .month, value: offset, to: selectedMonth) ?? selectedMonth
     }
 
+    /// Modeled on macOS's Settings > Storage bar: allocation of the total monthly
+    /// budget across categories, gray = unplanned buffer. Still purely about
+    /// *allocation*, not actual spending — actual-vs-expected spending still lives on
+    /// each budget card below (剩餘/已消費/建議下一筆); this bar only answers "have I
+    /// assigned my whole budget to categories yet, or is some of it still buffer".
+    ///
+    /// The key trick behind the Storage bar's clean look, that the earlier
+    /// hand-drawn attempt didn't do: only the *whole bar* is rounded
+    /// (`.clipShape` at the end), not each individual segment. The segments
+    /// themselves are plain, sharp-edged `Rectangle`s that just butt up against each
+    /// other with a couple points of gap — no per-segment stroke or corner radius,
+    /// which is what made the previous version look busy/cluttered.
+    private var budgetOverviewBar: some View {
+        let totalMinorUnits = viewModel.profile.monthlyBudgetLimitMinorUnits
+        let sortedBudgets = viewModel.budgetsSortedForOverview()
+        let remaining = viewModel.remainingAllocatableMinorUnits()
+
+        return VStack(alignment: .leading, spacing: 8) {
+            if totalMinorUnits <= 0 {
+                Text("設定本月總預算後，這裡會顯示分配比例")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                // Summary line above the bar — same spot macOS puts "X of Y used".
+                HStack {
+                    Text("已分配 \(amountText(viewModel.allocatedMinorUnits()))")
+                    Spacer()
+                    Text("總預算 \(amountText(totalMinorUnits))")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+                GeometryReader { geometry in
+                    HStack(spacing: 2) {
+                        ForEach(Array(sortedBudgets.enumerated()), id: \.element.id) { index, budget in
+                            Rectangle()
+                                .fill(categoryColor(at: index))
+                                .frame(
+                                    width: geometry.size.width * CGFloat(budget.limitMinorUnits) / CGFloat(totalMinorUnits)
+                                )
+                        }
+                        if remaining > 0 {
+                            let remainingWidth = geometry.size.width * CGFloat(remaining) / CGFloat(totalMinorUnits)
+                            Rectangle()
+                                .fill(Color(.systemGray5))
+                                .frame(width: remainingWidth)
+                                .overlay {
+                                    // Only label the buffer if it's wide enough to
+                                    // actually hold the text — otherwise it would
+                                    // just clip and look broken.
+                                    if remainingWidth > 70 {
+                                        Text(amountText(remaining))
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                        }
+                    }
+                }
+                .frame(height: 16)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+
+                budgetOverviewLegend(for: sortedBudgets)
+            }
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+    }
+
+    /// Color key below the bar, in the same left-to-right order as the segments —
+    /// same idea as the row of colored dots under Settings > iPhone Storage's bar.
+    /// Without this the segment colors wouldn't mean anything on their own.
+    private func budgetOverviewLegend(for budgets: [BudgetRecord]) -> some View {
+        // `.adaptive` columns let the legend wrap onto more than one row once there
+        // are more categories than fit on a single line, instead of clipping.
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 80), spacing: 8)], alignment: .leading, spacing: 4) {
+            ForEach(Array(budgets.enumerated()), id: \.element.id) { index, budget in
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(categoryColor(at: index))
+                        .frame(width: 8, height: 8)
+                    Text(budget.name)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+        }
+    }
+
+    /// Fixed palette cycled by index into `viewModel.budgetsSortedForOverview()` —
+    /// see that method's doc comment for why the order (not just the palette itself)
+    /// has to stay stable across renders and app launches.
+    private func categoryColor(at index: Int) -> Color {
+        let palette: [Color] = [.blue, .green, .orange, .purple, .pink, .teal, .indigo, .brown]
+        return palette[index % palette.count]
+    }
+
+    /// Per-budget usage bar shown under the title in `budgetRow`. Same "only the
+    /// whole bar is rounded, not the pieces inside it" construction as
+    /// `budgetOverviewBar` above — a plain background `Rectangle` and a plain fill
+    /// `Rectangle`, with a single `.clipShape` around both providing the rounding.
+    /// The fill's width is clamped to 100% even once over budget — going over the
+    /// limit is signaled by the color switching to red, not by the bar overflowing
+    /// its own bounds. `isOverBudget` mirrors the `remainingMinorUnits <= 0` check
+    /// already used for the "已超出預算" text below, so the bar's color and that
+    /// text can never disagree about whether this budget is over.
+    private func usageBar(_ progress: BudgetListViewModel.BudgetProgress, limitMinorUnits: Int64) -> some View {
+        let isOverBudget = progress.remainingMinorUnits <= 0
+        let ratio = limitMinorUnits > 0
+            ? min(Double(progress.spentMinorUnits) / Double(limitMinorUnits), 1)
+            : 0
+
+        return GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                Rectangle()
+                    .fill(Color(.systemGray5))
+                Rectangle()
+                    .fill(isOverBudget ? Color.red : Color.blue)
+                    .frame(width: geometry.size.width * ratio)
+            }
+        }
+        .frame(height: 8)
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+    }
+
     /// Phase 5: the summary area now has two independent tap targets instead of being
     /// one big `DisclosureGroup` label. Tapping the name/numbers opens the edit sheet;
     /// tapping the chevron only expands/collapses the transaction list below. A plain
@@ -255,6 +382,8 @@ struct BudgetListView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(budget.name)
                         .font(.subheadline.weight(.semibold))
+
+                    usageBar(progress, limitMinorUnits: budget.limitMinorUnits)
 
                     Text("剩餘 \(amountText(progress.remainingMinorUnits)) / \(amountText(budget.limitMinorUnits))")
                         .font(.caption)
@@ -364,6 +493,7 @@ private struct AddBudgetView: View {
     @State private var expectedMonthlyCount: Int
     @State private var showsCountSlider = false
     @State private var isSaving = false
+    @State private var showsDeleteConfirmation = false
 
     /// The "預計消費次數" slider needs *some* upper bound to be a valid SwiftUI
     /// `Slider`. The spec only specified a step of 1, not a maximum, so 31 (the most
@@ -439,6 +569,17 @@ private struct AddBudgetView: View {
                         )
                     }
                 }
+
+                // Only shown in edit mode — a budget that doesn't exist yet (the
+                // "new" sheet) has nothing to delete.
+                if editingBudget != nil {
+                    Section {
+                        Button("刪除預算", role: .destructive) {
+                            showsDeleteConfirmation = true
+                        }
+                        .frame(maxWidth: .infinity, alignment: .center)
+                    }
+                }
             }
             .navigationTitle(editingBudget == nil ? "新增預算" : "編輯預算")
             .navigationBarTitleDisplayMode(.inline)
@@ -451,11 +592,30 @@ private struct AddBudgetView: View {
                         .disabled(!canSave || isSaving)
                 }
             }
+            // Deleting a budget also reassigns every transaction under it to "其他"
+            // (see BudgetListViewModel.deleteBudget) — worth a confirmation before
+            // committing to that, not just an instant delete on tap.
+            .confirmationDialog(
+                "確定要刪除這個預算嗎？所有屬於這個類別的交易將會改為「其他」",
+                isPresented: $showsDeleteConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("刪除", role: .destructive) { delete() }
+                Button("取消", role: .cancel) {}
+            }
         }
     }
 
     private func amountText(_ minorUnits: Int64) -> String {
         "NT$\(minorUnits)"
+    }
+
+    private func delete() {
+        guard let editingBudget else { return }
+        Task {
+            await viewModel.deleteBudget(editingBudget)
+            dismiss()
+        }
     }
 
     private func save() {

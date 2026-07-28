@@ -125,11 +125,13 @@ struct TransactionListView: View {
     }
 
     /// Looks up the budget name for a transaction's `budgetId`. Falls back to "未分類"
-    /// both when `budgetId` is nil (user picked "請選擇類別") and when the id doesn't
-    /// match any currently-loaded budget (e.g. it was deleted after this transaction
-    /// was recorded — v2 has no budget deletion yet, but this keeps the row safe either way).
+    /// when `budgetId` is nil (user picked "請選擇類別"), shows "其他" for the reserved
+    /// `BudgetRecord.otherCategoryId` (transactions reassigned here when their budget
+    /// was deleted), and falls back to "未分類" again if the id somehow doesn't match
+    /// anything else (defensive — shouldn't normally happen with those two cases covered).
     private func budgetName(for transaction: TransactionRecord) -> String {
         guard let budgetId = transaction.budgetId else { return "未分類" }
+        if budgetId == BudgetRecord.otherCategoryId { return "其他" }
         return viewModel.budgets.first { $0.id == budgetId }?.name ?? "未分類"
     }
 
@@ -184,6 +186,7 @@ private struct AddTransactionView: View {
     @State private var selectedBudgetID: String?
     @State private var note: String
     @State private var isSaving = false
+    @State private var showsDeleteConfirmation = false
 
     private enum Kind: String, CaseIterable, Hashable {
         case income = "收入"
@@ -238,6 +241,17 @@ private struct AddTransactionView: View {
                     TextField("金額", text: $amountText)
                         .keyboardType(.numberPad)
                 }
+
+                // Only shown in edit mode — a transaction that doesn't exist yet
+                // (the "new" sheet) has nothing to delete.
+                if editingTransaction != nil {
+                    Section {
+                        Button("刪除這筆資料", role: .destructive) {
+                            showsDeleteConfirmation = true
+                        }
+                        .frame(maxWidth: .infinity, alignment: .center)
+                    }
+                }
             }
             .navigationTitle(navigationTitleText)
             .navigationBarTitleDisplayMode(.inline)
@@ -249,6 +263,17 @@ private struct AddTransactionView: View {
                     Button(editingTransaction == nil ? "儲存" : "修改") { save() }
                         .disabled(amountValue == nil || isSaving)
                 }
+            }
+            // Deleting is irreversible — there's no undo and no trash/archive — so
+            // this confirms before actually calling deleteTransaction, rather than
+            // deleting the instant the red button is tapped.
+            .confirmationDialog(
+                "確定要刪除這筆資料嗎？",
+                isPresented: $showsDeleteConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("刪除", role: .destructive) { delete() }
+                Button("取消", role: .cancel) {}
             }
         }
     }
@@ -286,6 +311,14 @@ private struct AddTransactionView: View {
                 )
             }
             isSaving = false
+            dismiss()
+        }
+    }
+
+    private func delete() {
+        guard let editingTransaction else { return }
+        Task {
+            await viewModel.deleteTransaction(editingTransaction)
             dismiss()
         }
     }

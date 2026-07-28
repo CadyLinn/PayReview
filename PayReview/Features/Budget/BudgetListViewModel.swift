@@ -98,6 +98,23 @@ final class BudgetListViewModel {
         max(0, profile.monthlyBudgetLimitMinorUnits - allocatedMinorUnits(excluding: excludedBudgetId))
     }
 
+    /// A stable ordering of budgets for the macOS-Storage-style overview bar, where
+    /// each budget is drawn as a colored segment. Colors there are assigned by *index
+    /// in this list*, so the order has to be deterministic and not depend on whatever
+    /// order the Firestore snapshot happens to deliver documents in — otherwise a
+    /// category's color (and its position left-to-right in the bar/legend) could
+    /// shuffle between app launches even though nothing the user did actually changed.
+    /// Sorting by `createdAt` (oldest first) with `id` as a tiebreaker for the rare
+    /// case of equal timestamps gives a fixed order: whichever budget you made first
+    /// keeps the same color and the same position.
+    func budgetsSortedForOverview() -> [BudgetRecord] {
+        guard case .loaded(let budgets) = state else { return [] }
+        return budgets.sorted { lhs, rhs in
+            if lhs.createdAt != rhs.createdAt { return lhs.createdAt < rhs.createdAt }
+            return lhs.id < rhs.id
+        }
+    }
+
     func addBudget(
         name: String,
         limitMinorUnits: Int64,
@@ -144,6 +161,42 @@ final class BudgetListViewModel {
             try await repository.updateBudget(updated)
         } catch {
             print("Failed to update budget: \(error)")
+        }
+    }
+
+    /// Permanently deletes a budget — called from the red "刪除預算" button in
+    /// `AddBudgetView`'s edit mode. Before deleting, every transaction currently
+    /// tagged with this budget gets reassigned to `BudgetRecord.otherCategoryId`
+    /// ("其他"), so deleting a category never silently orphans a transaction or makes
+    /// past spending vanish from history.
+    ///
+    /// This does the reassignment first and the deletion last, and each write is a
+    /// separate `await` — not wrapped in a single atomic Firestore batch. That means
+    /// if this gets interrupted partway (e.g. the app is killed mid-delete), some
+    /// transactions could end up reassigned to "其他" while the budget document still
+    /// exists. That's an acceptable "best effort" tradeoff for v2's scope — matches
+    /// the rest of this codebase's simple sequential-await style — but a fully
+    /// robust version would use a `WriteBatch` so all of this succeeds or fails together.
+    func deleteBudget(_ budget: BudgetRecord) async {
+        let affectedTransactions = transactions.filter { $0.budgetId == budget.id }
+        do {
+            for transaction in affectedTransactions {
+                let reassigned = TransactionRecord(
+                    id: transaction.id,
+                    amount: transaction.amount,
+                    budgetId: BudgetRecord.otherCategoryId,
+                    occurredAt: transaction.occurredAt,
+                    note: transaction.note,
+                    source: transaction.source,
+                    schemaVersion: transaction.schemaVersion,
+                    createdAt: transaction.createdAt,
+                    updatedAt: Date()
+                )
+                try await transactionRepository.updateTransaction(reassigned)
+            }
+            try await repository.deleteBudget(id: budget.id)
+        } catch {
+            print("Failed to delete budget: \(error)")
         }
     }
 

@@ -36,6 +36,14 @@ struct BudgetRecord: Codable, Identifiable, Equatable, Sendable {
     let schemaVersion: Int
     let createdAt: Date
     let updatedAt: Date
+
+    /// Reserved `budgetId` used to reassign a transaction whose budget was deleted
+    /// (see `BudgetListViewModel.deleteBudget`). Deliberately not a real document in
+    /// the `budgets` collection — there's no "其他" card to edit or delete, and no
+    /// user ever picks it from the category Picker. It exists purely so a transaction
+    /// that lost its category shows "其他" instead of collapsing into "未分類", which
+    /// already means something different ("the user chose not to categorize this").
+    static let otherCategoryId = "other"
 }
 
 // v2 Phase 5: a single per-user document (not a collection) holding whole-app

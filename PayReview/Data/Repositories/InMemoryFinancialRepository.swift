@@ -50,4 +50,11 @@ actor InMemoryFinancialRepository: TransactionRepository {
             continuation.yield(transactions)
         }
     }
+
+    func deleteTransaction(id: String) async throws {
+        transactions.removeAll { $0.id == id }
+        for continuation in continuations.values {
+            continuation.yield(transactions)
+        }
+    }
 }

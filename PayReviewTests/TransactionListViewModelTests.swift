@@ -105,6 +105,42 @@ struct TransactionListViewModelTests {
         observation.cancel()
     }
 
+    /// Phase 6: deleting a transaction should remove it from state (and its amount
+    /// should stop counting toward the balance) — the red "刪除這筆資料" button flow.
+    @Test func deletingTransactionRemovesItAndUpdatesBalance() async throws {
+        let repository = InMemoryFinancialRepository()
+        let budgetRepository = InMemoryBudgetRepository()
+        let viewModel = TransactionListViewModel(repository: repository, budgetRepository: budgetRepository)
+
+        let observation = Task { await viewModel.start() }
+        try await Task.sleep(for: .milliseconds(50))
+
+        await viewModel.addTransaction(amountMinorUnits: -500, budgetId: "b1", note: "午餐")
+        await viewModel.addTransaction(amountMinorUnits: 30_000, budgetId: nil, note: "薪水")
+        try await Task.sleep(for: .milliseconds(50))
+
+        guard case .loaded(let records) = viewModel.state, let toDelete = records.first(where: { $0.note == "午餐" }) else {
+            Issue.record("Expected to find the 午餐 transaction after adding it")
+            observation.cancel()
+            return
+        }
+
+        await viewModel.deleteTransaction(toDelete)
+        try await Task.sleep(for: .milliseconds(50))
+
+        guard case .loaded(let remaining) = viewModel.state else {
+            Issue.record("Expected .loaded state, got \(viewModel.state)")
+            observation.cancel()
+            return
+        }
+
+        #expect(remaining.count == 1)
+        #expect(remaining.first?.note == "薪水")
+        #expect(viewModel.balanceMinorUnits == 30_000)
+
+        observation.cancel()
+    }
+
     @Test func budgetsPropertyReflectsBudgetRepositoryStream() async throws {
         let repository = InMemoryFinancialRepository()
         let budgetRepository = InMemoryBudgetRepository(seed: [

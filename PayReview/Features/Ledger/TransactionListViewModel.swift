@@ -124,4 +124,15 @@ final class TransactionListViewModel {
             print("Failed to update transaction: \(error)")
         }
     }
+
+    /// Permanently deletes a transaction — called from the red "刪除這筆資料" button
+    /// in `AddTransactionView`'s edit mode. There's no undo, which is exactly why the
+    /// view puts a confirmation dialog in front of this.
+    func deleteTransaction(_ transaction: TransactionRecord) async {
+        do {
+            try await repository.deleteTransaction(id: transaction.id)
+        } catch {
+            print("Failed to delete transaction: \(error)")
+        }
+    }
 }

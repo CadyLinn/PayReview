@@ -9,4 +9,9 @@ protocol BudgetRepository {
     /// behave differently — `addBudget` appends, `updateBudget` replaces — even
     /// though the real Firestore call underneath happens to be identical either way.
     func updateBudget(_ budget: BudgetRecord) async throws
+
+    /// Permanently removes a budget. Callers are responsible for reassigning any
+    /// transactions that referenced it first — see `BudgetListViewModel.deleteBudget`
+    /// — this method only ever touches the `budgets` collection.
+    func deleteBudget(id: String) async throws
 }

@@ -32,6 +32,38 @@ struct BudgetListViewModelTests {
         observation.cancel()
     }
 
+    /// The overview bar assigns colors (and left-to-right position) by index in this
+    /// sorted list, so the order needs to be deterministic — oldest-created first —
+    /// and not just "whatever order the fake/Firestore happened to return them in".
+    @Test func budgetsSortedForOverviewOrdersByCreationDate() async throws {
+        let earliest = Date(timeIntervalSince1970: 1_700_000_000)
+        let middle = earliest.addingTimeInterval(60)
+        let latest = earliest.addingTimeInterval(120)
+        // Seeded deliberately out of chronological order, to prove the sort — not
+        // the seed order — is what determines the result.
+        let transport = BudgetRecord(
+            id: "b2", name: "交通", limitMinorUnits: 1_200, expectedMonthlyCount: 8,
+            schemaVersion: 1, createdAt: middle, updatedAt: middle
+        )
+        let entertainment = BudgetRecord(
+            id: "b3", name: "娛樂", limitMinorUnits: 800, expectedMonthlyCount: 3,
+            schemaVersion: 1, createdAt: latest, updatedAt: latest
+        )
+        let dining = BudgetRecord(
+            id: "b1", name: "餐飲", limitMinorUnits: 3_000, expectedMonthlyCount: 5,
+            schemaVersion: 1, createdAt: earliest, updatedAt: earliest
+        )
+        let viewModel = makeViewModel(budgets: [transport, entertainment, dining])
+
+        let observation = Task { await viewModel.start() }
+        try await Task.sleep(for: .milliseconds(50))
+
+        let sorted = viewModel.budgetsSortedForOverview()
+        #expect(sorted.map(\.id) == ["b1", "b2", "b3"])
+
+        observation.cancel()
+    }
+
     /// Phase 5: editing an existing budget should overwrite it in place (same id,
     /// same createdAt) rather than appending a second one.
     @Test func updatingBudgetOverwritesInPlace() async throws {
@@ -65,6 +97,50 @@ struct BudgetListViewModelTests {
         #expect(budgets.first?.limitMinorUnits == 4_000)
         #expect(budgets.first?.expectedMonthlyCount == 6)
         #expect(budgets.first?.createdAt == now)
+
+        observation.cancel()
+    }
+
+    /// Phase 6: deleting a budget should remove it from state and reassign every
+    /// transaction that referenced it to `BudgetRecord.otherCategoryId` ("其他"),
+    /// while leaving transactions under a different budget untouched.
+    @Test func deletingBudgetReassignsTransactionsToOtherAndRemovesBudget() async throws {
+        let now = Date()
+        let dining = BudgetRecord(
+            id: "b1", name: "餐飲", limitMinorUnits: 3_000, expectedMonthlyCount: 5,
+            schemaVersion: 1, createdAt: now, updatedAt: now
+        )
+        let transport = BudgetRecord(
+            id: "b2", name: "交通", limitMinorUnits: 1_200, expectedMonthlyCount: 8,
+            schemaVersion: 1, createdAt: now, updatedAt: now
+        )
+        let transactions = [
+            makeTransaction(id: "t1", minorUnits: -500, budgetId: "b1", occurredAt: now),
+            makeTransaction(id: "t2", minorUnits: -300, budgetId: "b1", occurredAt: now),
+            makeTransaction(id: "t3", minorUnits: -800, budgetId: "b2", occurredAt: now) // 不受影響
+        ]
+        let viewModel = makeViewModel(budgets: [dining, transport], transactions: transactions)
+
+        let observation = Task { await viewModel.start() }
+        try await Task.sleep(for: .milliseconds(50))
+
+        await viewModel.deleteBudget(dining)
+        try await Task.sleep(for: .milliseconds(50))
+
+        guard case .loaded(let budgets) = viewModel.state else {
+            Issue.record("Expected .loaded state, got \(viewModel.state)")
+            observation.cancel()
+            return
+        }
+
+        #expect(budgets.map(\.id) == ["b2"])
+
+        let reassigned = viewModel.transactions.filter { $0.id == "t1" || $0.id == "t2" }
+        #expect(reassigned.count == 2)
+        #expect(reassigned.allSatisfy { $0.budgetId == BudgetRecord.otherCategoryId })
+
+        let untouched = viewModel.transactions.first { $0.id == "t3" }
+        #expect(untouched?.budgetId == "b2")
 
         observation.cancel()
     }
