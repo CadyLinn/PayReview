@@ -138,7 +138,7 @@ private struct MainTabView: View {
 
     var body: some View {
         TabView(selection: $flow.selectedTab) {
-            TodayPrototypeView(setupStore: setupStore, flow: flow)
+            TodayPrototypeView(setupStore: setupStore, flow: flow, uid: uid)
                 .tabItem { Label("今天", systemImage: "house.fill") }
                 .tag(PayReviewFlowStore.Tab.today)
             BudgetListView(uid: uid)
@@ -154,16 +154,28 @@ private struct MainTabView: View {
 private struct TodayPrototypeView: View {
     @ObservedObject var setupStore: SetupStore
     @ObservedObject var flow: PayReviewFlowStore
+    // 消費頻率 Phase 2/3: unlike `setupStore`/`flow` above (local-only mock data —
+    // see this view's other doc comments), `todayViewModel` observes the real
+    // `BudgetRepository`/`TransactionRepository` for this signed-in user, so
+    // "今日固定支出" reflects actual categories and writes actual transactions.
+    @State private var todayViewModel: TodayViewModel
     @State private var presentedFlow: TodayFlow?
-    @State private var approvedExpenseIDs = Set<UUID>()
 
     enum TodayFlow: Hashable, Identifiable {
         case evaluation, comparison, weekly
         var id: Self { self }
     }
 
-    private var safeToSpend: Decimal {
-        max(0, setupStore.flexibleBudget - flow.confirmedExpenseTotal)
+    init(setupStore: SetupStore, flow: PayReviewFlowStore, uid: String) {
+        self.setupStore = setupStore
+        self.flow = flow
+        _todayViewModel = State(
+            initialValue: TodayViewModel(
+                budgetRepository: FirestoreBudgetRepository(uid: uid),
+                transactionRepository: FirestoreTransactionRepository(uid: uid),
+                profileRepository: FirestoreProfileRepository(uid: uid)
+            )
+        )
     }
 
     var body: some View {
@@ -183,10 +195,16 @@ private struct TodayPrototypeView: View {
                     }
                     .payReviewEntrance(delay: 0.02)
 
+                    // 改為真實資料: was "今天約可安心花" driven by SetupStore/
+                    // PayReviewFlowStore mock numbers (`setupStore.flexibleBudget`
+                    // minus `flow.confirmedExpenseTotal`) — now shows the actual
+                    // total monthly budget (set on 計畫) minus everything actually
+                    // spent this month, from `todayViewModel`.
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("今天約可安心花").font(.subheadline.weight(.semibold))
-                        Text(safeToSpend.twdFormatted).font(.system(size: 44, weight: .bold, design: .rounded))
-                        Text("已扣除目前確認的支出；金額為估算").font(.footnote)
+                        Text("預算剩餘總額").font(.subheadline.weight(.semibold))
+                        Text(Decimal(todayViewModel.remainingBudgetMinorUnits()).twdFormatted)
+                            .font(.system(size: 44, weight: .bold, design: .rounded))
+                        Text("本月總預算已扣除目前所有實際支出").font(.footnote)
                     }
                     .foregroundStyle(PayReviewTheme.surface)
                     .padding(20)
@@ -203,20 +221,25 @@ private struct TodayPrototypeView: View {
                     .payReviewShimmer()
                     .payReviewEntrance(delay: 0.14)
 
+                    // 消費頻率 Phase 3: the old "逐項核定今天需要預留的支出" caption is
+                    // gone — there's nothing left to "核定" item by item now that
+                    // typing an amount directly records the expense.
                     VStack(alignment: .leading, spacing: 14) {
                         Text("今日固定支出").font(.title3.bold())
-                        Text("逐項核定今天需要預留的支出")
-                            .font(.caption)
-                            .foregroundStyle(PayReviewTheme.secondaryText)
 
-                        if setupStore.plannedExpenses.isEmpty {
-                            Text("今天沒有需要核定的固定支出")
+                        let scheduledBudgets = todayViewModel.todaysScheduledBudgets()
+                        if scheduledBudgets.isEmpty {
+                            Text("今天沒有排定的固定支出類別")
                                 .font(.subheadline.weight(.medium))
                                 .foregroundStyle(PayReviewTheme.secondaryText)
                                 .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
                         } else {
-                            ForEach(setupStore.plannedExpenses) { expense in
-                                expenseChecklistRow(expense)
+                            ForEach(scheduledBudgets) { budget in
+                                TodayFixedExpenseRow(
+                                    todayViewModel: todayViewModel,
+                                    budget: budget,
+                                    loggedTransaction: todayViewModel.loggedTransactionToday(for: budget)
+                                )
                             }
                         }
                     }
@@ -238,6 +261,7 @@ private struct TodayPrototypeView: View {
                 .padding(24)
             }
             .background(PayReviewTheme.background.ignoresSafeArea())
+            .task { await todayViewModel.start() }
             .sheet(item: $presentedFlow) { destination in
                 switch destination {
                 case .evaluation:
@@ -249,49 +273,6 @@ private struct TodayPrototypeView: View {
                 }
             }
         }
-    }
-
-    private func expenseChecklistRow(_ expense: PlannedExpenseDraft) -> some View {
-        let isApproved = approvedExpenseIDs.contains(expense.id)
-
-        return Button {
-            if isApproved {
-                approvedExpenseIDs.remove(expense.id)
-                flow.reopenPlannedExpense(expense)
-            } else {
-                approvedExpenseIDs.insert(expense.id)
-                flow.completePlannedExpense(expense)
-            }
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: isApproved ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .foregroundStyle(isApproved ? PayReviewTheme.primary : PayReviewTheme.secondaryText)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text(expense.name)
-                            .font(.subheadline.weight(.semibold))
-                        Spacer(minLength: 12)
-                        Text(expense.amount.twdFormatted)
-                            .font(.subheadline.weight(.bold))
-                    }
-                    Text(isApproved ? "已核定" : "點一下核定今日支出")
-                        .font(.caption)
-                        .foregroundStyle(PayReviewTheme.secondaryText)
-                }
-                .strikethrough(isApproved, color: PayReviewTheme.secondaryText)
-                .foregroundStyle(isApproved ? PayReviewTheme.secondaryText : PayReviewTheme.primaryText)
-            }
-            .padding(.horizontal, 14)
-            .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
-            .background(PayReviewTheme.surface.opacity(0.72), in: RoundedRectangle(cornerRadius: 18))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(expense.name)，\(expense.amount.twdFormatted)")
-        .accessibilityValue(isApproved ? "已核定" : "尚未核定")
-        .accessibilityHint(isApproved ? "點兩下取消核定" : "點兩下核定今日支出")
     }
 
     private func explorationButton(
@@ -311,6 +292,105 @@ private struct TodayPrototypeView: View {
         }
         .buttonStyle(PayReviewPressButtonStyle())
         .payReviewInteractiveTilt(maximumAngle: 6, focusedScale: 1.035)
+    }
+}
+
+/// 消費頻率 Phase 2/3, then 新增: one row in "今日固定支出", one per category
+/// scheduled for today.
+/// - The row's label is the category's own name (`budget.name`) — this app has no
+///   separate Category type, a budget *is* the category, so there's nothing else
+///   to show here.
+/// - There's no system keyboard involved at all: tapping the row (whether it's
+///   still blank or already completed) opens `CalculatorKeypadView` in a sheet —
+///   an iPhone-Calculator-style keypad — pre-filled with the current amount when
+///   re-editing a completed row. Tapping "=" evaluates the expression, dismisses
+///   the sheet, and syncs the result to Firestore; canceling the sheet (swipe
+///   down or the "取消" button) leaves whatever was there untouched.
+/// - Committing an empty/zero/invalid expression over an *already-logged* row
+///   deletes that transaction instead of saving zero — once it's gone,
+///   `loggedTransaction` goes back to nil on its own (through
+///   `todayViewModel.transactions`), which is what actually removes the
+///   strikethrough and restores the row's pre-input look; there's no separate
+///   "reset" step to write here.
+private struct TodayFixedExpenseRow: View {
+    let todayViewModel: TodayViewModel
+    let budget: BudgetRecord
+    let loggedTransaction: TransactionRecord?
+
+    @State private var expression = ""
+    @State private var isShowingCalculator = false
+    @State private var isSaving = false
+
+    private var isCompleted: Bool { loggedTransaction != nil }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(budget.name)
+                .font(.subheadline.weight(.semibold))
+
+            Spacer(minLength: 12)
+
+            Text(displayAmountText)
+                .font(.subheadline.weight(.bold))
+        }
+        .strikethrough(isCompleted, color: PayReviewTheme.secondaryText)
+        .foregroundStyle(isCompleted ? PayReviewTheme.secondaryText : PayReviewTheme.primaryText)
+        .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+        .background(PayReviewTheme.surface.opacity(0.72), in: RoundedRectangle(cornerRadius: 18))
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard !isSaving else { return }
+            // Re-opening an already-logged row starts from its current amount, so
+            // the user can e.g. tap "+50" to add to it instead of retyping the
+            // whole thing from scratch.
+            expression = loggedTransaction.map { String(abs($0.amount.minorUnits)) } ?? ""
+            isShowingCalculator = true
+        }
+        .animation(.default, value: isCompleted)
+        .sheet(isPresented: $isShowingCalculator) {
+            CalculatorKeypadView(
+                expression: $expression,
+                onEquals: { commit() },
+                onCancel: { isShowingCalculator = false }
+            )
+            .presentationDetents([.height(380)])
+            .presentationDragIndicator(.visible)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(budget.name)
+        .accessibilityValue(isCompleted ? "已記帳，點兩下修改" : "尚未記帳，點兩下輸入金額")
+    }
+
+    private var displayAmountText: String {
+        guard let loggedTransaction else { return "NT$0" }
+        return amountText(forMinorUnits: loggedTransaction.amount.minorUnits)
+    }
+
+    private func commit() {
+        guard !isSaving else { return }
+        let value = CalculatorKeypadView.evaluatedAmount(from: expression)
+        isSaving = true
+        isShowingCalculator = false
+        Task {
+            if let loggedTransaction {
+                if let value {
+                    await todayViewModel.updateTodayExpense(loggedTransaction, amountMinorUnits: value)
+                } else {
+                    // Cleared back to empty (or an unusable expression) on an
+                    // already-logged row means "undo this one", not "save NT$0".
+                    await todayViewModel.deleteTodayExpense(loggedTransaction)
+                }
+            } else if let value {
+                await todayViewModel.addTodayExpense(for: budget, amountMinorUnits: value)
+            }
+            expression = ""
+            isSaving = false
+        }
+    }
+
+    private func amountText(forMinorUnits minorUnits: Int64) -> String {
+        "NT$\(abs(minorUnits))"
     }
 }
 

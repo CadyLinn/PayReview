@@ -185,6 +185,9 @@ private struct AddTransactionView: View {
     // "請選擇類別" row — is tagged with an Optional<String>, so they're all the same type.
     @State private var selectedBudgetID: String?
     @State private var note: String
+    // 新增: which day this transaction happened on — editable now, not just fixed
+    // at "whenever it was created". Defaults to today for a brand-new transaction.
+    @State private var occurredAt: Date
     @State private var isSaving = false
     @State private var showsDeleteConfirmation = false
 
@@ -205,11 +208,13 @@ private struct AddTransactionView: View {
             _amountText = State(initialValue: String(abs(editingTransaction.amount.minorUnits)))
             _selectedBudgetID = State(initialValue: editingTransaction.budgetId)
             _note = State(initialValue: editingTransaction.note ?? "")
+            _occurredAt = State(initialValue: editingTransaction.occurredAt)
         } else {
             _kind = State(initialValue: .expense)
             _amountText = State(initialValue: "")
             _selectedBudgetID = State(initialValue: nil)
             _note = State(initialValue: "")
+            _occurredAt = State(initialValue: .now)
         }
     }
 
@@ -228,6 +233,14 @@ private struct AddTransactionView: View {
                         ForEach(Kind.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                     }
                     .pickerStyle(.segmented)
+                }
+                // 新增: `.compact` (the default style for a `DatePicker` inside a
+                // Form row) already does exactly what was asked for — tapping the
+                // date opens a calendar flyout defaulted to the selected date's
+                // month, with that date shown as a solid blue circle — so there's
+                // no custom calendar UI to build here, just wiring up the field.
+                Section {
+                    DatePicker("日期", selection: $occurredAt, displayedComponents: .date)
                 }
                 Section("類別") {
                     Picker("類別", selection: $selectedBudgetID) {
@@ -301,13 +314,15 @@ private struct AddTransactionView: View {
                     editingTransaction,
                     amountMinorUnits: signedAmount,
                     budgetId: selectedBudgetID,
-                    note: trimmedNote.isEmpty ? nil : trimmedNote
+                    note: trimmedNote.isEmpty ? nil : trimmedNote,
+                    occurredAt: occurredAt
                 )
             } else {
                 await viewModel.addTransaction(
                     amountMinorUnits: signedAmount,
                     budgetId: selectedBudgetID,
-                    note: trimmedNote.isEmpty ? nil : trimmedNote
+                    note: trimmedNote.isEmpty ? nil : trimmedNote,
+                    occurredAt: occurredAt
                 )
             }
             isSaving = false

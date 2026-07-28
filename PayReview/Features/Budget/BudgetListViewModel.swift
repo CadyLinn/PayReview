@@ -118,7 +118,10 @@ final class BudgetListViewModel {
     func addBudget(
         name: String,
         limitMinorUnits: Int64,
-        expectedMonthlyCount: Int
+        expectedMonthlyCount: Int,
+        frequency: BudgetFrequency = .custom,
+        frequencyWeekdays: Set<Int> = [],
+        frequencyMonthDays: Set<Int> = []
     ) async {
         let id = repository.newBudgetID()
         let now = Date()
@@ -127,6 +130,9 @@ final class BudgetListViewModel {
             name: name,
             limitMinorUnits: limitMinorUnits,
             expectedMonthlyCount: expectedMonthlyCount,
+            frequency: frequency,
+            frequencyWeekdays: frequencyWeekdays,
+            frequencyMonthDays: frequencyMonthDays,
             schemaVersion: 1,
             createdAt: now,
             updatedAt: now
@@ -146,13 +152,19 @@ final class BudgetListViewModel {
         _ original: BudgetRecord,
         name: String,
         limitMinorUnits: Int64,
-        expectedMonthlyCount: Int
+        expectedMonthlyCount: Int,
+        frequency: BudgetFrequency = .custom,
+        frequencyWeekdays: Set<Int> = [],
+        frequencyMonthDays: Set<Int> = []
     ) async {
         let updated = BudgetRecord(
             id: original.id,
             name: name,
             limitMinorUnits: limitMinorUnits,
             expectedMonthlyCount: expectedMonthlyCount,
+            frequency: frequency,
+            frequencyWeekdays: frequencyWeekdays,
+            frequencyMonthDays: frequencyMonthDays,
             schemaVersion: original.schemaVersion,
             createdAt: original.createdAt,
             updatedAt: Date()

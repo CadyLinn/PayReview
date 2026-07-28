@@ -494,11 +494,22 @@ private struct AddBudgetView: View {
     @State private var showsCountSlider = false
     @State private var isSaving = false
     @State private var showsDeleteConfirmation = false
+    // 消費頻率 Phase 1: which cadence this category is expected to be spent on, plus
+    // the two "which days exactly" selections that only apply to one frequency each.
+    @State private var frequency: BudgetFrequency
+    @State private var frequencyWeekdays: Set<Int>
+    @State private var frequencyMonthDays: Set<Int>
 
     /// The "預計消費次數" slider needs *some* upper bound to be a valid SwiftUI
     /// `Slider`. The spec only specified a step of 1, not a maximum, so 31 (the most
     /// days in a month) is a generous-but-finite cap on "how many times a month".
     private let maxExpectedCount = 31
+
+    /// Chinese weekday labels, index 0 = `Calendar` weekday 1 (Sunday) through
+    /// index 6 = weekday 7 (Saturday) — matches `Calendar.component(.weekday:)`
+    /// directly so there's no separate "translate my UI order into Calendar's
+    /// order" step anywhere else in this feature.
+    private let weekdayLabels = ["日", "一", "二", "三", "四", "五", "六"]
 
     /// `maxLimitMinorUnits` is passed in as "how much of the total budget is unallocated,
     /// *excluding* this budget's own current limit" (see
@@ -512,6 +523,9 @@ private struct AddBudgetView: View {
         _name = State(initialValue: editingBudget?.name ?? "")
         _limitMinorUnits = State(initialValue: editingBudget?.limitMinorUnits ?? 0)
         _expectedMonthlyCount = State(initialValue: editingBudget?.expectedMonthlyCount ?? 1)
+        _frequency = State(initialValue: editingBudget?.frequency ?? .custom)
+        _frequencyWeekdays = State(initialValue: editingBudget?.frequencyWeekdays ?? [])
+        _frequencyMonthDays = State(initialValue: editingBudget?.frequencyMonthDays ?? [])
     }
 
     private var canSave: Bool {
@@ -546,27 +560,73 @@ private struct AddBudgetView: View {
                     }
                 }
 
+                // 消費頻率 Phase 1: positioned right before "每月預計消費次數" per the
+                // spec, since it directly drives that field. Choosing 每日/每週/每月
+                // auto-fills the count below and takes over the slider; only 自訂
+                // leaves the old manual tap-to-reveal slider in charge.
+                Section("消費頻率") {
+                    Picker("頻率", selection: $frequency) {
+                        ForEach(BudgetFrequency.allCases, id: \.self) { option in
+                            Text(option.displayName).tag(option)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .onChange(of: frequency) { _, _ in syncExpectedMonthlyCount() }
+
+                    if frequency == .weekly {
+                        HStack(spacing: 10) {
+                            ForEach(1...7, id: \.self) { weekday in
+                                weekdayCircle(weekday)
+                            }
+                        }
+                        .padding(.top, 4)
+                        .frame(maxWidth: .infinity)
+                    }
+
+                    if frequency == .monthly {
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 8) {
+                            ForEach(1...30, id: \.self) { day in
+                                monthDayCell(day)
+                            }
+                        }
+                        .padding(.top, 4)
+                    }
+                }
+
                 Section("每月預計消費次數") {
-                    Button {
-                        showsCountSlider.toggle()
-                    } label: {
+                    if frequency == .custom {
+                        Button {
+                            showsCountSlider.toggle()
+                        } label: {
+                            HStack {
+                                Text("\(expectedMonthlyCount) 次")
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                                Image(systemName: showsCountSlider ? "chevron.up" : "chevron.down")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        if showsCountSlider {
+                            Slider(
+                                value: Binding(
+                                    get: { Double(expectedMonthlyCount) },
+                                    set: { expectedMonthlyCount = Int($0.rounded()) }
+                                ),
+                                in: 1...Double(maxExpectedCount),
+                                step: 1
+                            )
+                        }
+                    } else {
+                        // 每日/每週/每月已經隱含次數，這裡只顯示自動算出來的結果，
+                        // 不讓使用者手動調整，避免跟頻率選擇互相矛盾。
                         HStack {
                             Text("\(expectedMonthlyCount) 次")
                                 .foregroundStyle(.primary)
                             Spacer()
-                            Image(systemName: showsCountSlider ? "chevron.up" : "chevron.down")
+                            Text("依頻率自動計算")
+                                .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
-                    }
-                    if showsCountSlider {
-                        Slider(
-                            value: Binding(
-                                get: { Double(expectedMonthlyCount) },
-                                set: { expectedMonthlyCount = Int($0.rounded()) }
-                            ),
-                            in: 1...Double(maxExpectedCount),
-                            step: 1
-                        )
                     }
                 }
 
@@ -610,6 +670,65 @@ private struct AddBudgetView: View {
         "NT$\(minorUnits)"
     }
 
+    /// One tappable circle in the weekly weekday row. `weekday` uses `Calendar`'s
+    /// own numbering (1 = Sunday ... 7 = Saturday) — the same numbering
+    /// `BudgetRecord.isScheduled(on:)` compares against later, so there's no
+    /// translation step anywhere between "what the user tapped" and "what gets
+    /// checked against today's date".
+    private func weekdayCircle(_ weekday: Int) -> some View {
+        let isSelected = frequencyWeekdays.contains(weekday)
+        return Button {
+            if isSelected {
+                frequencyWeekdays.remove(weekday)
+            } else {
+                frequencyWeekdays.insert(weekday)
+            }
+            syncExpectedMonthlyCount()
+        } label: {
+            Text(weekdayLabels[weekday - 1])
+                .font(.subheadline.weight(.semibold))
+                .frame(width: 36, height: 36)
+                .background(isSelected ? Color.blue : Color(.systemGray5), in: Circle())
+                .foregroundStyle(isSelected ? Color.white : Color.primary)
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// One tappable day in the monthly 1...30 grid. Same multi-select toggle
+    /// behavior as `weekdayCircle`, just over day-of-month instead of weekday.
+    private func monthDayCell(_ day: Int) -> some View {
+        let isSelected = frequencyMonthDays.contains(day)
+        return Button {
+            if isSelected {
+                frequencyMonthDays.remove(day)
+            } else {
+                frequencyMonthDays.insert(day)
+            }
+            syncExpectedMonthlyCount()
+        } label: {
+            Text("\(day)")
+                .font(.caption.weight(.semibold))
+                .frame(width: 32, height: 32)
+                .background(isSelected ? Color.blue : Color(.systemGray5), in: Circle())
+                .foregroundStyle(isSelected ? Color.white : Color.primary)
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Re-derives "每月預計消費次數" from the current frequency + selections, every
+    /// time either one changes. Only overwrites `expectedMonthlyCount` when there's
+    /// an actual suggestion (i.e. frequency isn't `.custom`) — see
+    /// `BudgetRecord.suggestedExpectedMonthlyCount`.
+    private func syncExpectedMonthlyCount() {
+        if let suggested = BudgetRecord.suggestedExpectedMonthlyCount(
+            frequency: frequency,
+            weekdays: frequencyWeekdays,
+            monthDays: frequencyMonthDays
+        ) {
+            expectedMonthlyCount = suggested
+        }
+    }
+
     private func delete() {
         guard let editingBudget else { return }
         Task {
@@ -627,13 +746,19 @@ private struct AddBudgetView: View {
                     editingBudget,
                     name: trimmedName,
                     limitMinorUnits: limitMinorUnits,
-                    expectedMonthlyCount: expectedMonthlyCount
+                    expectedMonthlyCount: expectedMonthlyCount,
+                    frequency: frequency,
+                    frequencyWeekdays: frequencyWeekdays,
+                    frequencyMonthDays: frequencyMonthDays
                 )
             } else {
                 await viewModel.addBudget(
                     name: trimmedName,
                     limitMinorUnits: limitMinorUnits,
-                    expectedMonthlyCount: expectedMonthlyCount
+                    expectedMonthlyCount: expectedMonthlyCount,
+                    frequency: frequency,
+                    frequencyWeekdays: frequencyWeekdays,
+                    frequencyMonthDays: frequencyMonthDays
                 )
             }
             isSaving = false

@@ -71,10 +71,14 @@ final class TransactionListViewModel {
     /// Creates and persists a new transaction. `amountMinorUnits` should already carry
     /// the correct sign: positive for income, negative for expense. `budgetId` is the
     /// id of a `BudgetRecord` the user picked, or nil for "請選擇類別" (uncategorized).
+    /// `occurredAt` defaults to "right now" — the only caller that ever needs a
+    /// different date is `AddTransactionView`'s new date picker, which passes the
+    /// date the user actually picked.
     func addTransaction(
         amountMinorUnits: Int64,
         budgetId: String?,
-        note: String?
+        note: String?,
+        occurredAt: Date = Date()
     ) async {
         let id = repository.newTransactionID()
         let now = Date()
@@ -82,7 +86,7 @@ final class TransactionListViewModel {
             id: id,
             amount: Money(minorUnits: amountMinorUnits, currencyCode: "TWD"),
             budgetId: budgetId,
-            occurredAt: now,
+            occurredAt: occurredAt,
             note: note,
             source: .manual,
             schemaVersion: 1,
@@ -98,20 +102,24 @@ final class TransactionListViewModel {
     }
 
     /// Phase 5: applies edits made in `AddTransactionView`'s edit mode. `original`
-    /// carries over `id`, `occurredAt`, `source`, `schemaVersion`, and `createdAt`
-    /// unchanged — editing a transaction's amount/category/note shouldn't change
-    /// when it happened or when it was first recorded.
+    /// carries over `id`, `source`, `schemaVersion`, and `createdAt` unchanged —
+    /// editing a transaction's amount/category/note/date shouldn't change when it
+    /// was first recorded. `occurredAt` defaults to `nil`, meaning "keep the date
+    /// unchanged" (falls back to `original.occurredAt`) — existing call sites that
+    /// don't care about the date (like this file's own tests) keep compiling
+    /// unchanged; only `AddTransactionView`'s date picker needs to actually pass one.
     func updateTransaction(
         _ original: TransactionRecord,
         amountMinorUnits: Int64,
         budgetId: String?,
-        note: String?
+        note: String?,
+        occurredAt: Date? = nil
     ) async {
         let updated = TransactionRecord(
             id: original.id,
             amount: Money(minorUnits: amountMinorUnits, currencyCode: original.amount.currencyCode),
             budgetId: budgetId,
-            occurredAt: original.occurredAt,
+            occurredAt: occurredAt ?? original.occurredAt,
             note: note,
             source: original.source,
             schemaVersion: original.schemaVersion,

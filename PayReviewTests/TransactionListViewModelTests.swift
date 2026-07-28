@@ -141,6 +141,74 @@ struct TransactionListViewModelTests {
         observation.cancel()
     }
 
+    /// 新增: `AddTransactionView`'s new date picker passes an explicit `occurredAt`
+    /// through to `addTransaction` — confirms it's actually used instead of being
+    /// silently ignored in favor of "now".
+    @Test func addingTransactionWithExplicitOccurredAtUsesThatDate() async throws {
+        let repository = InMemoryFinancialRepository()
+        let budgetRepository = InMemoryBudgetRepository()
+        let viewModel = TransactionListViewModel(repository: repository, budgetRepository: budgetRepository)
+
+        let observation = Task { await viewModel.start() }
+        try await Task.sleep(for: .milliseconds(50))
+
+        let pickedDate = Calendar.current.date(byAdding: .day, value: -3, to: .now)!
+        await viewModel.addTransaction(amountMinorUnits: -500, budgetId: "b1", note: "早餐", occurredAt: pickedDate)
+        try await Task.sleep(for: .milliseconds(50))
+
+        guard case .loaded(let records) = viewModel.state else {
+            Issue.record("Expected .loaded state, got \(viewModel.state)")
+            observation.cancel()
+            return
+        }
+        #expect(records.first?.occurredAt == pickedDate)
+        observation.cancel()
+    }
+
+    /// 新增: editing a transaction's date should change `occurredAt` when a new one
+    /// is passed, but leave it alone (falls back to `original.occurredAt`) when the
+    /// caller doesn't supply one — the same backward-compatible default every
+    /// other Phase 5 call site already relies on.
+    @Test func updatingTransactionCanChangeOrPreserveOccurredAt() async throws {
+        let repository = InMemoryFinancialRepository()
+        let budgetRepository = InMemoryBudgetRepository()
+        let viewModel = TransactionListViewModel(repository: repository, budgetRepository: budgetRepository)
+
+        let observation = Task { await viewModel.start() }
+        try await Task.sleep(for: .milliseconds(50))
+
+        let originalDate = Calendar.current.date(byAdding: .day, value: -1, to: .now)!
+        await viewModel.addTransaction(amountMinorUnits: -500, budgetId: "b1", note: "午餐", occurredAt: originalDate)
+        try await Task.sleep(for: .milliseconds(50))
+
+        guard case .loaded(let recordsBeforeEdit) = viewModel.state, let original = recordsBeforeEdit.first else {
+            Issue.record("Expected one transaction after adding it")
+            observation.cancel()
+            return
+        }
+
+        // No `occurredAt:` supplied — should preserve the original date.
+        await viewModel.updateTransaction(original, amountMinorUnits: -600, budgetId: "b1", note: "午餐")
+        try await Task.sleep(for: .milliseconds(50))
+        if case .loaded(let afterFirstEdit) = viewModel.state {
+            #expect(afterFirstEdit.first?.occurredAt == originalDate)
+        } else {
+            Issue.record("Expected .loaded state")
+        }
+
+        // Explicit `occurredAt:` supplied — should overwrite it.
+        let newDate = Calendar.current.date(byAdding: .day, value: -5, to: .now)!
+        await viewModel.updateTransaction(original, amountMinorUnits: -600, budgetId: "b1", note: "午餐", occurredAt: newDate)
+        try await Task.sleep(for: .milliseconds(50))
+        if case .loaded(let afterSecondEdit) = viewModel.state {
+            #expect(afterSecondEdit.first?.occurredAt == newDate)
+        } else {
+            Issue.record("Expected .loaded state")
+        }
+
+        observation.cancel()
+    }
+
     @Test func budgetsPropertyReflectsBudgetRepositoryStream() async throws {
         let repository = InMemoryFinancialRepository()
         let budgetRepository = InMemoryBudgetRepository(seed: [
