@@ -137,7 +137,7 @@ PayReview 由 **PayReview Team** 設計與開發。
 
 | 成員 | 主要角色 | 負責範圍 |
 | --- | --- | --- |
-| Cady | TPM | 技術專案管理、開發時程、跨功能協調、技術決策、專用 Skill 與 Agentic AI 流程整合 |
+| Cady（CadyLinn） | Lead iOS Developer/TPM | iOS 端全架構與實作（Design System、Onboarding、認證狀態流、財務設定引導、核心決策體驗與動效）、技術專案管理、開發時程、跨功能協調、技術決策、專用 Skill 與 Agentic AI 流程整合 |
 | Micheal（machshyi） | PM | 產品規格、需求排序、上線規劃、使用者流程、驗收條件與產品文件 |
 | eli_liao | Backend | Authentication、Firestore、Security Rules、API、後端流程、資料模型與資料安全 |
 
