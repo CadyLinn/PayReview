@@ -126,11 +126,11 @@ Skill 只能產生檢查與建議。上傳 build、提交審核、開啟預購�
 
 下表依目前 repository 的 commit authorship 與主要修改範圍整理。正式職稱與責任歸屬仍應由團隊確認。
 
-| 成員 | 主要角色 | 核心工作 | Agentic AI 責任 |
-| --- | --- | --- | --- |
-| Cady | TPM | 技術專案管理、開發時程、跨功能協調、技術決策、專用 Skill 與 Agentic AI 流程整合 | 拆解技術里程碑、協調 Agent 任務與依賴、維護 repository 規則與 Skill、追蹤驗證與交付狀態 |
-| Micheal（machshyi） | PM | 產品規格、需求排序、上線規劃、使用者流程、驗收條件與產品文件 | 定義 Agent 任務目標與驗收條件、確認產品語氣與流程、核准產品及發布決策 |
-| eli_liao | Backend | Authentication、Firestore、Security Rules、API、後端流程、資料模型與資料安全 | 檢視 Agent 產生的後端與安全變更、驗證權限、同步、API、失敗處理與敏感資料界線 |
+| 成員 | 主要角色 | 核心工作 |
+| --- | --- | --- |
+| Cady（CadyLinn） | Lead iOS Developer/TPM | iOS 端全架構與實作（Design System、Onboarding、認證狀態流、財務設定引導、核心決策體驗與動效）、技術專案管理、開發時程、跨功能協調、技術決策、專用 Skill 與 Agentic AI 流程整合 |
+| Micheal（machshyi） | PM | 產品規格、需求排序、上線規劃、使用者流程、驗收條件與產品文件 |
+| eli_liao | Backend | Authentication、Firestore、Security Rules、API、後端流程、資料模型與資料安全 |
 
 ### 共同責任
 
